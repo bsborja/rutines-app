@@ -18,7 +18,6 @@ interface BehaviorOption {
 
 interface BehaviorSelectorProps {
   routine: Routine
-  isJuliaMode?: boolean
   loggedByParent?: boolean
   onSelect: (score: BehaviorScore, points: number) => Promise<void>
   onCancel: () => void
@@ -26,7 +25,6 @@ interface BehaviorSelectorProps {
 
 export default function BehaviorSelector({
   routine,
-  isJuliaMode = false,
   loggedByParent = false,
   onSelect,
   onCancel,
@@ -38,7 +36,7 @@ export default function BehaviorSelector({
     ? Math.round(routine.base_points_bad * 1.5)
     : routine.base_points_bad
 
-  const allOptions: BehaviorOption[] = [
+  const options: BehaviorOption[] = [
     {
       score: 'good',
       label: 'Bé! 🌟',
@@ -71,9 +69,6 @@ export default function BehaviorSelector({
     },
   ]
 
-  // Julia only gets 2 options
-  const options = isJuliaMode ? [allOptions[0], allOptions[2]] : allOptions
-
   async function handleSelect(option: BehaviorOption) {
     if (loading) return
     resumeAudio()
@@ -82,7 +77,6 @@ export default function BehaviorSelector({
 
     if (option.score === 'ok') playOkSound()
     if (option.score === 'bad') playBadSound()
-    // Good sound is handled by parent (with confetti)
 
     await onSelect(option.score, option.pointsDelta)
     setLoading(false)
@@ -107,14 +101,10 @@ export default function BehaviorSelector({
           {/* Header */}
           <div className="p-6 pb-4 border-b border-gray-100">
             <div className="flex items-center gap-3">
-              <span className={isJuliaMode ? 'text-6xl' : 'text-4xl'}>{routine.emoji}</span>
+              <span className="text-4xl">{routine.emoji}</span>
               <div>
-                <h2 className={`font-black text-gray-800 ${isJuliaMode ? 'text-2xl' : 'text-xl'}`}>
-                  {routine.name}
-                </h2>
-                {!isJuliaMode && (
-                  <p className="text-gray-500 text-sm">{routine.description}</p>
-                )}
+                <h2 className="font-black text-gray-800 text-xl">{routine.name}</h2>
+                <p className="text-gray-500 text-sm">{routine.description}</p>
               </div>
             </div>
             {loggedByParent && (
@@ -128,13 +118,13 @@ export default function BehaviorSelector({
 
           {/* Question */}
           <div className="px-6 py-4">
-            <p className={`text-center font-bold text-gray-700 ${isJuliaMode ? 'text-2xl' : 'text-lg'}`}>
-              {isJuliaMode ? 'Com ha anat?' : 'Com ha anat avui?'}
+            <p className="text-center font-bold text-gray-700 text-lg">
+              Com ha anat avui?
             </p>
           </div>
 
           {/* Options */}
-          <div className={`px-6 pb-6 flex flex-col gap-3`}>
+          <div className="px-6 pb-6 flex flex-col gap-3">
             {options.map((option, i) => (
               <motion.button
                 key={option.score}
@@ -145,10 +135,9 @@ export default function BehaviorSelector({
                 onClick={() => handleSelect(option)}
                 disabled={loading}
                 className={`
-                  w-full rounded-2xl border-2 transition-all text-left
+                  w-full rounded-2xl border-2 p-4 transition-all text-left
                   ${loading && selected !== option.score ? 'opacity-50' : ''}
                   ${selected === option.score ? 'scale-95' : ''}
-                  ${isJuliaMode ? 'p-5' : 'p-4'}
                 `}
                 style={{
                   backgroundColor: option.bg,
@@ -156,25 +145,15 @@ export default function BehaviorSelector({
                 }}
               >
                 <div className="flex items-center gap-4">
-                  <span className={isJuliaMode ? 'text-6xl' : 'text-4xl'}>
-                    {option.emoji}
-                  </span>
+                  <span className="text-4xl">{option.emoji}</span>
                   <div className="flex-1">
-                    <p
-                      className={`font-black ${isJuliaMode ? 'text-2xl' : 'text-xl'}`}
-                      style={{ color: option.color }}
-                    >
+                    <p className="font-black text-xl" style={{ color: option.color }}>
                       {option.label}
                     </p>
-                    {!isJuliaMode && (
-                      <p className="text-gray-500 text-sm">{option.description}</p>
-                    )}
+                    <p className="text-gray-500 text-sm">{option.description}</p>
                   </div>
                   <div className="text-right">
-                    <p
-                      className={`font-black ${isJuliaMode ? 'text-2xl' : 'text-lg'}`}
-                      style={{ color: option.color }}
-                    >
+                    <p className="font-black text-lg" style={{ color: option.color }}>
                       {option.pointsDelta > 0 ? '+' : ''}{option.pointsDelta}
                     </p>
                     <p className="text-gray-400 text-xs">punts</p>

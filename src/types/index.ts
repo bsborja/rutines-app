@@ -31,6 +31,24 @@ export interface Routine {
   order_index: number
 }
 
+// Per-profile, per-routine point overrides (from routine_points table)
+export interface RoutinePointsOverride {
+  id: string
+  profile_id: string
+  routine_id: string
+  points_good: number
+  points_ok: number
+  points_bad: number
+  updated_at: string
+}
+
+// Effective points for a routine (resolved from override or base)
+export interface EffectivePoints {
+  good: number
+  ok: number
+  bad: number
+}
+
 export interface RoutineLog {
   id: string
   profile_id: string
@@ -111,25 +129,36 @@ export const PROFILE_COLORS: Record<string, string> = {
   Montse: '#1ABC9C',
 }
 
+// --- Economics ---
+// Max euros a girl can earn per week (all routines done "Bé" every day)
+export const MAX_WEEKLY_EUROS = 2.50
+
+// Reward costs in euros (NOT points — points required is dynamic per profile)
 export const REWARD_TYPES = [
   {
     id: 'activitat',
     label: 'Escollir activitat de cap de setmana',
     emoji: '🎪',
-    pointsRequired: 80,
+    eurosRequired: 7.50,
   },
   {
     id: 'compra',
     label: 'Comprar alguna cosa',
     emoji: '🛍️',
-    pointsRequired: 120,
+    eurosRequired: 10.00,
   },
   {
     id: 'sopar',
     label: 'Sopar a soles amb un pare',
     emoji: '🍽️',
-    pointsRequired: 160,
+    eurosRequired: 15.00,
   },
 ]
 
-export const POINTS_PER_EURO = 40 // 1€ = 40 punts (0.025€ per punt)
+// Days per week each routine category appears
+export const ROUTINE_WEEKLY_DAYS: Record<RoutineCategory, number> = {
+  mati: 5,
+  tarda: 5,
+  nit: 5,
+  cap_de_setmana: 2,
+}

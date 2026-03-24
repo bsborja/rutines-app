@@ -1,0 +1,332 @@
+warning: in the working copy of 'src/app/dashboard/[profileId]/page.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/BehaviorSelector.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/CelebrationOverlay.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/PinModal.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/RoutineCard.tsx', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/src/app/dashboard/[profileId]/page.tsx b/src/app/dashboard/[profileId]/page.tsx[m
+[1mindex d8f9dca..03a112c 100644[m
+[1m--- a/src/app/dashboard/[profileId]/page.tsx[m
+[1m+++ b/src/app/dashboard/[profileId]/page.tsx[m
+[36m@@ -18,7 +18,7 @@[m [mimport BadgesDisplay from '@/components/BadgesDisplay'[m
+ import AvatarUpload from '@/components/AvatarUpload'[m
+ import { supabase } from '@/lib/supabase'[m
+ import { updateProfilePoints, checkAndAwardBadges, getWeeklyPoints } from '@/lib/points'[m
+[31m-import { playSuccessSound, resumeAudio } from '@/lib/sound'[m
+[32m+[m[32mimport { resumeAudio } from '@/lib/sound'[m
+ import { BehaviorScore } from '@/types'[m
+ [m
+ const CATEGORIES: RoutineCategory[] = ['mati', 'tarda', 'nit', 'cap_de_setmana'][m
+[36m@@ -55,7 +55,6 @@[m [mexport default function DashboardPage({ params }: { params: Promise<{ profileId:[m
+     )[m
+   }[m
+ [m
+[31m-  const isJuliaMode = profile.is_julia_mode[m
+   const isViewingOwnProfile = session?.profileId === profileId[m
+   const girls = allProfiles.filter((p) => p.role === 'nena')[m
+ [m
+[36m@@ -81,7 +80,25 @@[m [mexport default function DashboardPage({ params }: { params: Promise<{ profileId:[m
+     const loggedBy = session.profileId[m
+     const targetId = isParent ? targetProfileId : profileId[m
+ [m
+[31m-    // Insert log[m
+[32m+[m[32m    // Check if this routine already has a log today (to avoid double-counting)[m
+[32m+[m[32m    const { data: existingLogs } = await supabase[m
+[32m+[m[32m      .from('routine_logs')[m
+[32m+[m[32m      .select('id, points_awarded')[m
+[32m+[m[32m      .eq('profile_id', targetId)[m
+[32m+[m[32m      .eq('routine_id', selectedRoutine.id)[m
+[32m+[m[32m      .gte('created_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())[m
+[32m+[m[32m      .lt('created_at', new Date(new Date().setHours(24, 0, 0, 0)).toISOString())[m
+[32m+[m[32m      .limit(1)[m
+[32m+[m
+[32m+[m[32m    const existingLog = existingLogs?.[0][m
+[32m+[m
+[32m+[m[32m    if (existingLog) {[m
+[32m+[m[32m      // Revert old points and delete old log[m
+[32m+[m[32m      await updateProfilePoints(targetId, -existingLog.points_awarded)[m
+[32m+[m[32m      await supabase.from('routine_logs').delete().eq('id', existingLog.id)[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // Insert new log[m
+     const { error } = await supabase.from('routine_logs').insert({[m
+       profile_id: targetId,[m
+       routine_id: selectedRoutine.id,[m
+[36m@@ -100,7 +117,6 @@[m [mexport default function DashboardPage({ params }: { params: Promise<{ profileId:[m
+     await updateProfilePoints(targetId, points)[m
+ [m
+     if (score === 'good') {[m
+[31m-      playSuccessSound()[m
+       const newBadges = await checkAndAwardBadges(targetId)[m
+ [m
+       const targetProfile = allProfiles.find((p) => p.id === targetId)[m
+[36m@@ -171,39 +187,23 @@[m [mexport default function DashboardPage({ params }: { params: Promise<{ profileId:[m
+           </div>[m
+         )}[m
+ [m
+[31m-        {/* Julia greeting */}[m
+[31m-        {isJuliaMode && ([m
+[31m-          <motion.div[m
+[31m-            initial={{ opacity: 0, y: -10 }}[m
+[31m-            animate={{ opacity: 1, y: 0 }}[m
+[31m-            className="mt-4 text-center"[m
+[31m-          >[m
+[31m-            <p className="text-5xl mb-1">👋</p>[m
+[31m-            <h2 className="text-4xl font-black" style={{ color: profile.color }}>[m
+[31m-              Hola, {profile.name}![m
+[31m-            </h2>[m
+[31m-          </motion.div>[m
+[31m-        )}[m
+[31m-[m
+[31m-        {/* Tabs (non-Julia) */}[m
+[31m-        {!isJuliaMode && ([m
+[31m-          <div className="flex bg-white rounded-2xl p-1 mt-4 mb-4 shadow-sm">[m
+[31m-            {(['rutines', 'stats', 'perfil'] as const).map((tab) => ([m
+[31m-              <button[m
+[31m-                key={tab}[m
+[31m-                onClick={() => setActiveTab(tab)}[m
+[31m-                className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${[m
+[31m-                  activeTab === tab ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-700'[m
+[31m-                }`}[m
+[31m-              >[m
+[31m-                {tab === 'rutines' ? '📋 Rutines' : tab === 'stats' ? '📊 Estadístiques' : '👤 Perfil'}[m
+[31m-              </button>[m
+[31m-            ))}[m
+[31m-          </div>[m
+[31m-        )}[m
+[32m+[m[32m        {/* Tabs */}[m
+[32m+[m[32m        <div className="flex bg-white rounded-2xl p-1 mt-4 mb-4 shadow-sm">[m
+[32m+[m[32m          {(['rutines', 'stats', 'perfil'] as const).map((tab) => ([m
+[32m+[m[32m            <button[m
+[32m+[m[32m              key={tab}[m
+[32m+[m[32m              onClick={() => setActiveTab(tab)}[m
+[32m+[m[32m              className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${[m
+[32m+[m[32m                activeTab === tab ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-700'[m
+[32m+[m[32m              }`}[m
+[32m+[m[32m            >[m
+[32m+[m[32m              {tab === 'rutines' ? '📋 Rutines' : tab === 'stats' ? '📊 Estadístiques' : '👤 Perfil'}[m
+[32m+[m[32m            </button>[m
+[32m+[m[32m          ))}[m
+[32m+[m[32m        </div>[m
+ [m
+         {/* ===== RUTINES TAB ===== */}[m
+[31m-        {(activeTab === 'rutines' || isJuliaMode) && ([m
+[32m+[m[32m        {activeTab === 'rutines' && ([m
+           <div className="space-y-6 mt-2">[m
+             {CATEGORIES.map((category) => {[m
+               const catRoutines = getRoutinesByCategory(category)[m
+[36m@@ -216,7 +216,6 @@[m [mexport default function DashboardPage({ params }: { params: Promise<{ profileId:[m
+                   routines={catRoutines}[m
+                   logs={logs}[m
+                   effectiveProfileId={effectiveProfileId}[m
+[31m-                  isJuliaMode={isJuliaMode}[m
+                   onRoutineClick={(r) => setSelectedRoutine(r)}[m
+                 />[m
+               )[m
+[36m@@ -225,7 +224,7 @@[m [mexport default function DashboardPage({ params }: { params: Promise<{ profileId:[m
+         )}[m
+ [m
+         {/* ===== STATS TAB ===== */}[m
+[31m-        {activeTab === 'stats' && !isJuliaMode && ([m
+[32m+[m[32m        {activeTab === 'stats' && ([m
+           <div className="space-y-4">[m
+             <WeeklyStats profileId={effectiveProfileId} color={effectiveProfile.color} />[m
+             <LevelProgress totalPoints={effectiveProfile.total_points} color={effectiveProfile.color} />[m
+[36m@@ -235,7 +234,7 @@[m [mexport default function DashboardPage({ params }: { params: Promise<{ profileId:[m
+         )}[m
+ [m
+         {/* ===== PERFIL TAB ===== */}[m
+[31m-        {activeTab === 'perfil' && !isJuliaMode && ([m
+[32m+[m[32m        {activeTab === 'perfil' && ([m
+           <ProfileTab[m
+             profile={effectiveProfile}[m
+             isEditable={session?.profileId === effectiveProfileId || isParent}[m
+[36m@@ -247,7 +246,6 @@[m [mexport default function DashboardPage({ params }: { params: Promise<{ profileId:[m
+       {selectedRoutine && ([m
+         <BehaviorSelector[m
+           routine={selectedRoutine}[m
+[31m-          isJuliaMode={isJuliaMode}[m
+           loggedByParent={isParent}[m
+           onSelect={handleBehaviorSelect}[m
+           onCancel={() => setSelectedRoutine(null)}[m
+[36m@@ -259,12 +257,8 @@[m [mexport default function DashboardPage({ params }: { params: Promise<{ profileId:[m
+         visible={celebration.visible}[m
+         message={celebration.message}[m
+         subMessage={celebration.sub}[m
+[31m-        isJuliaMode={isJuliaMode}[m
+         onComplete={() => setCelebration((prev) => ({ ...prev, visible: false }))}[m
+       />[m
+[31m-[m
+[31m-      {/* Julia bottom stats */}[m
+[31m-      {isJuliaMode && <JuliaBottomBar profileId={profileId} color={profile.color} />}[m
+     </div>[m
+   )[m
+ }[m
+[36m@@ -274,14 +268,12 @@[m [mfunction CategorySection({[m
+   routines,[m
+   logs,[m
+   effectiveProfileId,[m
+[31m-  isJuliaMode,[m
+   onRoutineClick,[m
+ }: {[m
+   category: RoutineCategory[m
+   routines: Routine[][m
+   logs: RoutineLog[][m
+   effectiveProfileId: string[m
+[31m-  isJuliaMode: boolean[m
+   onRoutineClick: (r: Routine) => void[m
+ }) {[m
+   const doneCount = routines.filter((r) => logs.some((l) => l.routine_id === r.id && l.profile_id === effectiveProfileId)).length[m
+[36m@@ -289,15 +281,15 @@[m [mfunction CategorySection({[m
+   return ([m
+     <div>[m
+       <div className="flex items-center justify-between mb-2">[m
+[31m-        <h3 className={`font-black text-gray-700 ${isJuliaMode ? 'text-2xl' : 'text-base'}`}>[m
+[32m+[m[32m        <h3 className="font-black text-gray-700 text-base">[m
+           {CATEGORY_LABELS[category]}[m
+         </h3>[m
+[31m-        <span className={`font-bold text-gray-400 ${isJuliaMode ? 'text-lg' : 'text-sm'}`}>[m
+[32m+[m[32m        <span className="font-bold text-gray-400 text-sm">[m
+           {doneCount}/{routines.length}[m
+         </span>[m
+       </div>[m
+ [m
+[31m-      <div className={`space-y-${isJuliaMode ? '4' : '2'}`}>[m
+[32m+[m[32m      <div className="space-y-2">[m
+         {routines.map((routine, i) => {[m
+           const log = logs.find((l) => l.routine_id === routine.id && l.profile_id === effectiveProfileId)[m
+           return ([m
+[36m@@ -306,7 +298,6 @@[m [mfunction CategorySection({[m
+               routine={routine}[m
+               log={log}[m
+               onClick={() => onRoutineClick(routine)}[m
+[31m-              isJuliaMode={isJuliaMode}[m
+               index={i}[m
+             />[m
+           )[m
+[36m@@ -357,20 +348,3 @@[m [mfunction ProfileTab({ profile, isEditable }: { profile: Profile; isEditable: boo[m
+   )[m
+ }[m
+ [m
+[31m-function JuliaBottomBar({ profileId, color }: { profileId: string; color: string }) {[m
+[31m-  const [weeklyPoints, setWeeklyPoints] = useState(0)[m
+[31m-[m
+[31m-  useEffect(() => {[m
+[31m-    getWeeklyPoints(profileId).then(setWeeklyPoints)[m
+[31m-  }, [profileId])[m
+[31m-[m
+[31m-  return ([m
+[31m-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-100 p-4 flex items-center justify-center gap-4">[m
+[31m-      <span className="text-3xl">⭐</span>[m
+[31m-      <div className="text-center">[m
+[31m-        <p className="text-3xl font-black" style={{ color }}>{weeklyPoints}</p>[m
+[31m-        <p className="text-xs text-gray-400 font-semibold">punts aquesta setmana</p>[m
+[31m-      </div>[m
+[31m-    </div>[m
+[31m-  )[m
+[31m-}[m
+[1mdiff --git a/src/components/BehaviorSelector.tsx b/src/components/BehaviorSelector.tsx[m
+[1mindex d1eddb2..fcdca45 100644[m
+[1m--- a/src/components/BehaviorSelector.tsx[m
+[1m+++ b/src/components/BehaviorSelector.tsx[m
+[36m@@ -18,7 +18,6 @@[m [minterface BehaviorOption {[m
+ [m
+ interface BehaviorSelectorProps {[m
+   routine: Routine[m
+[31m-  isJuliaMode?: boolean[m
+   loggedByParent?: boolean[m
+   onSelect: (score: BehaviorScore, points: number) => Promise<void>[m
+   onCancel: () => void[m
+[36m@@ -26,7 +25,6 @@[m [minterface BehaviorSelectorProps {[m
+ [m
+ export default function BehaviorSelector({[m
+   routine,[m
+[31m-  isJuliaMode = false,[m
+   loggedByParent = false,[m
+   onSelect,[m
+   onCancel,[m
+[36m@@ -38,7 +36,7 @@[m [mexport default function BehaviorSelector({[m
+     ? Math.round(routine.base_points_bad * 1.5)[m
+     : routine.base_points_bad[m
+ [m
+[31m-  const allOptions: BehaviorOption[] = [[m
+[32m+[m[32m  const options: BehaviorOption[] = [[m
+     {[m
+       score: 'good',[m
+       label: 'Bé! 🌟',[m
+[36m@@ -71,9 +69,6 @@[m [mexport default function BehaviorSelector({[m
+     },[m
+   ][m
+ [m
+[31m-  // Julia only gets 2 options[m
+[31m-  const options = isJuliaMode ? [allOptions[0], allOptions[2]] : allOptions[m
+[31m-[m
+   async function handleSelect(option: BehaviorOption) {[m
+     if (loading) return[m
+     resumeAudio()[m
+[36m@@ -82,7 +77,6 @@[m [mexport default function BehaviorSelector({[m
+ [m
+     if (option.score === 'ok') playOkSound()[m
+     if (option.score === 'bad') playBadSound()[m
+[31m-    // Good sound is handled by parent (with confetti)[m
+ [m
+     await onSelect(option.score, option.pointsDelta)[m
+     setLoading(false)[m
+[36m@@ -107,14 +101,10 @@[m [mexport default function BehaviorSelector({[m
+           {/* Header */}[m
+           <div className="p-6 pb-4 border-b border-gray-100">[m
+             <div className="flex items-center gap-3">[m
+[31m-              <span className={isJuliaMode ? 'text-6xl' : 'text-4xl'}>{routine.emoji}</span>[m
+[32m+[m[32m              <span className="text-4xl">{routine.emoji}</span>[m
+               <div>[m
+[31m-                <h2 className={`font-black text-gray-800 ${isJuliaMode ? 'text-2xl' : 'text-xl'}`}>[m
+[31m-                  {routine.name}[m
+[31m-                </h2>[m
+[31m-                {!isJuliaMode && ([m
+[31m-                  <p className="text-gray-500 text-sm">{routine.description}</p>[m
+[31m-                )}[m
+[32m+[m[32m                <h2 className="font-black text-gray-800 text-xl">{routine.name}</h2>[m
+[32m+[m[32m                <p className="text-gray-500 text-sm">{routine.description}</p>[m
+               </div>[m
+             </div>[m
+             {loggedByParent && ([m
+[36m@@ -128,13 +118,13 @@[m [mexport default function BehaviorSelector({[m
+ [m
+           {/* Question */}[m
+           <div className="px-6 py-4">[m
+[31m-            <p className={`text-center font-bold text-gray-700 ${isJuliaMode ? 'text-2xl' : 'text-lg'}`}>[m
+[31m-              {isJuliaMode ? 'Com ha anat?' : 'Com ha anat avui?'}[m
+[32m+[m[32m            <p className="text-center font-bold text-gray-700 text-lg">[m
+[32m+[m[32m              Com ha anat avui?[m
+             </p>[m
+           </div>[m
+ [m
+           {/* Options */}[m
+[31m-          <div className={`px-6 pb-6 flex flex-col gap-3`}>[m
+[32m+[m[32m          <div className="px-6 pb-6 flex flex-col gap-3">[m
+             {options.map((option, i) => ([m
+               <motion.button[m
+                 key={option.score}[m
+[36m@@ -145,10 +135,9 @@[m [mexport default function BehaviorSelector({[m
+                 onClick={() => handleSelect(option)}[m
+                 disabled={loading}[m
+                 className={`[m
+[31m-                  w-full rounded-2xl border-2 transition-all text-left[m
+[32m+[m[32m                  w-full rounded-2xl border-2 p-4 transition-all text-left[m
+                   ${loading && selected !== option.score ? 'opacity-50' : ''}[m
+                   ${selected === option.score ? 'scale-95' : ''}[m
+[31m-                  ${isJuliaMode ? 'p-5' : 'p-4'}[m
+                 `}[m
+                 style={{[m
+                   backgroundColor: option.bg,[m
+[36m@@ -156,25 +145,15 @@[m [mexport default function BehaviorSelector({[m
+                 }}[m
+               >[m
+                 <div className="flex items-center gap-4">[m
+[31m-                  <span className={isJuliaMode ? 'text-6xl' : 'text-4xl'}>[m
+[31m-                    {option.emoji}[m
+[31m-                  </span>[m
+[32m+[m[32m                  <span className="text-4xl">{option.emoji}</span>[m
+                   <div className="flex-1">[m
+[31m-                    <p[m
+[31m-                      className={`font-black ${isJuliaMode ? 'text-2xl' : 'text-xl'}`}[m
+[31m-      
