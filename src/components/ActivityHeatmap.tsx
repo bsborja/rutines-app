@@ -42,7 +42,7 @@ export default function ActivityHeatmap({ profileId, color }: ActivityHeatmapPro
   useEffect(() => {
     async function load() {
       const from = new Date()
-      from.setDate(from.getDate() - 364)
+      from.setDate(from.getDate() - 182)
       from.setHours(0, 0, 0, 0)
 
       const { data } = await supabase
@@ -71,7 +71,7 @@ export default function ActivityHeatmap({ profileId, color }: ActivityHeatmapPro
 
   // Start from 52 weeks ago, on a Monday
   const gridStart = new Date(today)
-  gridStart.setDate(gridStart.getDate() - 364)
+  gridStart.setDate(gridStart.getDate() - 182)
   // Align to Monday
   const startDay = gridStart.getDay() // 0=Sun
   const daysToMon = startDay === 0 ? 1 : (8 - startDay) % 7
@@ -119,7 +119,7 @@ export default function ActivityHeatmap({ profileId, color }: ActivityHeatmapPro
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-base font-black text-gray-800">Activitat (últim any)</h3>
+        <h3 className="text-base font-black text-gray-800">Activitat (últims 6 mesos)</h3>
         <span className="text-xs text-gray-400 font-semibold">
           {totalDays} dies actius · {totalGood}/{totalLogs} Bé
         </span>

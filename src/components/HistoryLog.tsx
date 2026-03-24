@@ -7,11 +7,12 @@ import { RoutineLog, Routine, BehaviorScore, EffectivePoints } from '@/types'
 import { updateProfilePoints } from '@/lib/points'
 import { updateWalletEuros } from '@/lib/wallet'
 
-const SCORE_LABELS: Record<BehaviorScore, string> = { good: 'Bé', ok: 'Regular', bad: 'Malament' }
+const SCORE_LABELS: Record<BehaviorScore, string> = { good: 'Bé', ok: 'Regular', bad: 'Malament', skip: 'Saltada' }
 const SCORE_COLORS: Record<BehaviorScore, string> = {
   good: 'bg-green-100 text-green-700',
   ok:   'bg-yellow-100 text-yellow-700',
   bad:  'bg-red-100 text-red-700',
+  skip: 'bg-gray-100 text-gray-400',
 }
 
 interface LogWithRoutine extends RoutineLog {

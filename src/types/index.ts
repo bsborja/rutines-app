@@ -1,6 +1,6 @@
 export type Role = 'nena' | 'pare' | 'mare'
 export type RoutineCategory = 'mati' | 'tarda' | 'nit' | 'cap_de_setmana'
-export type BehaviorScore = 'good' | 'ok' | 'bad'
+export type BehaviorScore = 'good' | 'ok' | 'bad' | 'skip'
 export type LevelName = 'Principiant' | 'Aprenent' | 'Estel' | 'Campiona' | 'Llegenda'
 export type BadgeType = 'streak_3' | 'streak_7' | 'streak_30'
 
@@ -27,8 +27,25 @@ export interface Routine {
   base_points_ok: number
   base_points_bad: number
   is_weekend_only: boolean
+  active_weekdays: number   // bitmask: bit0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat (127=all)
   emoji: string
   order_index: number
+}
+
+export interface FantasticAnimal {
+  id: string
+  level_required: number
+  name: string
+  emoji: string
+  description: string
+}
+
+export interface ProfileAnimal {
+  id: string
+  profile_id: string
+  animal_id: string
+  unlocked_at: string
+  animal?: FantasticAnimal
 }
 
 // Per-profile, per-routine point overrides (from routine_points table)

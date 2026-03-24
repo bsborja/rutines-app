@@ -4,10 +4,9 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { getWeekStart } from '@/lib/points'
-import { BehaviorScore } from '@/types'
 
 interface DayData {
-  date: string          // YYYY-MM-DD
+  date: string
   goodCount: number
   okCount: number
   badCount: number
@@ -16,15 +15,16 @@ interface DayData {
 
 type DayLevel = 'empty' | 'bad' | 'ok' | 'good' | 'perfect'
 
-const DAY_LABELS = ['Dl', 'Dt', 'Dc', 'Dj', 'Dv', 'Ds', 'Dg']
-const DAY_FULL   = ['Dilluns', 'Dimarts', 'Dimecres', 'Dijous', 'Divendres', 'Dissabte', 'Diumenge']
+// Mon–Fri labels
+const WEEKDAY_LABELS = ['Dl', 'Dt', 'Dc', 'Dj', 'Dv']
+const WEEKDAY_FULL   = ['Dilluns', 'Dimarts', 'Dimecres', 'Dijous', 'Divendres']
 
-function getDayLevel(day: DayData | undefined): DayLevel {
-  if (!day || day.total === 0) return 'empty'
-  const goodRate = day.goodCount / day.total
-  if (goodRate >= 0.9) return 'perfect'
-  if (goodRate >= 0.6) return 'good'
-  if (goodRate >= 0.3) return 'ok'
+function getDayLevel(good: number, total: number): DayLevel {
+  if (total === 0) return 'empty'
+  const rate = good / total
+  if (rate >= 0.9) return 'perfect'
+  if (rate >= 0.6) return 'good'
+  if (rate >= 0.3) return 'ok'
   return 'bad'
 }
 
@@ -71,13 +71,12 @@ export default function WeeklyEasyView({ profileId, color }: WeeklyEasyViewProps
         .eq('profile_id', profileId)
         .gte('created_at', weekStart)
         .lt('created_at', weekEnd.toISOString())
+        .neq('score', 'skip')
 
       const grouped: Record<string, DayData> = {}
       for (const log of data ?? []) {
         const date = new Date(log.created_at).toISOString().split('T')[0]
-        if (!grouped[date]) {
-          grouped[date] = { date, goodCount: 0, okCount: 0, badCount: 0, total: 0 }
-        }
+        if (!grouped[date]) grouped[date] = { date, goodCount: 0, okCount: 0, badCount: 0, total: 0 }
         grouped[date].total++
         if (log.score === 'good') grouped[date].goodCount++
         else if (log.score === 'ok') grouped[date].okCount++
@@ -89,17 +88,31 @@ export default function WeeklyEasyView({ profileId, color }: WeeklyEasyViewProps
     load()
   }, [profileId])
 
-  // Build Mon–Sun dates for current week
   const weekStart = getWeekStart()
-  const weekDates = Array.from({ length: 7 }, (_, i) => {
+  // Mon–Fri dates (indices 0–4)
+  const weekdayDates = Array.from({ length: 5 }, (_, i) => {
     const d = new Date(weekStart)
     d.setDate(d.getDate() + i)
     return d.toISOString().split('T')[0]
   })
+  // Sat + Sun dates
+  const satDate = (() => { const d = new Date(weekStart); d.setDate(d.getDate() + 5); return d.toISOString().split('T')[0] })()
+  const sunDate = (() => { const d = new Date(weekStart); d.setDate(d.getDate() + 6); return d.toISOString().split('T')[0] })()
 
   const todayStr = new Date().toISOString().split('T')[0]
-  const totalGood = weekDates.reduce((s, d) => s + (dayData[d]?.goodCount ?? 0), 0)
-  const totalAll  = weekDates.reduce((s, d) => s + (dayData[d]?.total ?? 0), 0)
+
+  // Weekend aggregate
+  const satData = dayData[satDate]
+  const sunData = dayData[sunDate]
+  const wkndGood  = (satData?.goodCount ?? 0) + (sunData?.goodCount ?? 0)
+  const wkndTotal = (satData?.total ?? 0)     + (sunData?.total ?? 0)
+  const wkndLevel = getDayLevel(wkndGood, wkndTotal)
+  const isWeekendToday = todayStr === satDate || todayStr === sunDate
+  const isWeekendFuture = satDate > todayStr // whole weekend is future
+
+  // Overall week score (skip already filtered)
+  const totalGood = [...weekdayDates, satDate, sunDate].reduce((s, d) => s + (dayData[d]?.goodCount ?? 0), 0)
+  const totalAll  = [...weekdayDates, satDate, sunDate].reduce((s, d) => s + (dayData[d]?.total ?? 0), 0)
   const weekScore = totalAll > 0 ? Math.round((totalGood / totalAll) * 100) : null
 
   if (loading) {
@@ -107,7 +120,7 @@ export default function WeeklyEasyView({ profileId, color }: WeeklyEasyViewProps
       <div className="bg-white rounded-2xl p-4 shadow-sm animate-pulse">
         <div className="h-5 bg-gray-200 rounded w-1/3 mb-4" />
         <div className="flex gap-2">
-          {Array.from({ length: 7 }).map((_, i) => (
+          {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex-1 h-16 bg-gray-100 rounded-xl" />
           ))}
         </div>
@@ -127,11 +140,15 @@ export default function WeeklyEasyView({ profileId, color }: WeeklyEasyViewProps
         )}
       </div>
 
+      {/* 6 columns: Mon–Fri + weekend block */}
       <div className="flex gap-1.5">
-        {weekDates.map((date, i) => {
+        {/* Weekdays */}
+        {weekdayDates.map((date, i) => {
           const data   = dayData[date]
-          const level  = getDayLevel(data)
-          const isToday = date === todayStr
+          const good   = data?.goodCount ?? 0
+          const total  = data?.total ?? 0
+          const level  = getDayLevel(good, total)
+          const isToday  = date === todayStr
           const isFuture = date > todayStr
 
           return (
@@ -142,25 +159,17 @@ export default function WeeklyEasyView({ profileId, color }: WeeklyEasyViewProps
               transition={{ delay: i * 0.05 }}
               className="flex-1 flex flex-col items-center gap-1"
             >
-              {/* Day letter */}
-              <span
-                className={`text-xs font-black ${isToday ? '' : 'text-gray-400'}`}
-                style={isToday ? { color } : {}}
-              >
-                {DAY_LABELS[i]}
+              <span className="text-xs font-black" style={isToday ? { color } : { color: '#9CA3AF' }}>
+                {WEEKDAY_LABELS[i]}
               </span>
-
-              {/* Color block */}
               <div
-                className={`w-full rounded-xl flex items-center justify-center transition-all ${
-                  isToday ? 'ring-2 shadow-sm' : ''
-                }`}
+                className="w-full rounded-xl flex items-center justify-center"
                 style={{
                   backgroundColor: isFuture ? '#F3F4F6' : LEVEL_COLORS[level],
                   height: 52,
                   outline: isToday ? `2px solid ${color}` : 'none',
                 }}
-                title={`${DAY_FULL[i]}: ${LEVEL_LABELS[level]}${data?.total ? ` (${data.goodCount}/${data.total} Bé)` : ''}`}
+                title={`${WEEKDAY_FULL[i]}: ${LEVEL_LABELS[level]}${total ? ` (${good}/${total} Bé)` : ''}`}
               >
                 {!isFuture && (
                   <span className="text-lg select-none">
@@ -168,26 +177,50 @@ export default function WeeklyEasyView({ profileId, color }: WeeklyEasyViewProps
                   </span>
                 )}
               </div>
-
-              {/* Points if any */}
-              {data && data.total > 0 && (
-                <span className="text-xs font-bold text-gray-500">
-                  {data.goodCount}/{data.total}
-                </span>
+              {total > 0 && (
+                <span className="text-xs font-bold text-gray-500">{good}/{total}</span>
               )}
             </motion.div>
           )
         })}
+
+        {/* Weekend combined block (2× width) */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: isWeekendFuture ? 0.35 : 1, y: 0 }}
+          transition={{ delay: 5 * 0.05 }}
+          className="flex flex-col items-center gap-1"
+          style={{ flex: 2 }}
+        >
+          <span className="text-xs font-black" style={isWeekendToday ? { color } : { color: '#9CA3AF' }}>
+            Fds
+          </span>
+          <div
+            className="w-full rounded-xl flex items-center justify-center"
+            style={{
+              backgroundColor: isWeekendFuture ? '#F3F4F6' : LEVEL_COLORS[wkndLevel],
+              height: 52,
+              outline: isWeekendToday ? `2px solid ${color}` : 'none',
+            }}
+            title={`Cap de setmana: ${LEVEL_LABELS[wkndLevel]}${wkndTotal ? ` (${wkndGood}/${wkndTotal} Bé)` : ''}`}
+          >
+            {!isWeekendFuture && (
+              <span className="text-lg select-none">
+                {wkndLevel === 'empty' ? (isWeekendToday ? '⏳' : '—') : LEVEL_EMOJIS[wkndLevel]}
+              </span>
+            )}
+          </div>
+          {wkndTotal > 0 && (
+            <span className="text-xs font-bold text-gray-500">{wkndGood}/{wkndTotal}</span>
+          )}
+        </motion.div>
       </div>
 
       {/* Legend */}
       <div className="flex gap-3 justify-center mt-3 flex-wrap">
         {(['perfect', 'good', 'ok', 'bad'] as DayLevel[]).map((lvl) => (
           <div key={lvl} className="flex items-center gap-1">
-            <div
-              className="w-3 h-3 rounded-sm"
-              style={{ backgroundColor: LEVEL_COLORS[lvl] }}
-            />
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: LEVEL_COLORS[lvl] }} />
             <span className="text-xs text-gray-400">{LEVEL_LABELS[lvl]}</span>
           </div>
         ))}
