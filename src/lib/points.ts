@@ -8,6 +8,7 @@ import {
   EffectivePoints,
   RoutinePointsOverride,
   ROUTINE_WEEKLY_DAYS,
+  FantasticAnimal,
 } from '@/types'
 import { supabase } from './supabase'
 
@@ -20,12 +21,10 @@ export function calculatePoints(
   loggedByParent: boolean = false,
 ): number {
   switch (score) {
-    case 'good':
-      return basePointsGood
-    case 'ok':
-      return basePointsOk
+    case 'good': return basePointsGood
+    case 'ok':   return basePointsOk
+    case 'skip': return 0
     case 'bad':
-      // Parents register 50% more negative impact
       return loggedByParent ? Math.round(basePointsBad * 1.5) : basePointsBad
   }
 }
@@ -278,6 +277,47 @@ export async function updateProfilePoints(profileId: string, pointsDelta: number
     .from('profiles')
     .update({ total_points: newTotal, level: newLevel })
     .eq('id', profileId)
+}
+
+// Check and unlock fantastic animals based on current level
+// Returns newly unlocked animals (for celebration display)
+export async function checkAndUnlockAnimals(profileId: string): Promise<FantasticAnimal[]> {
+  // Get current profile level
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('level')
+    .eq('id', profileId)
+    .single()
+
+  if (!profile) return []
+
+  // Get all animals up to current level
+  const { data: allAnimals } = await supabase
+    .from('fantastic_animals')
+    .select('*')
+    .lte('level_required', profile.level)
+    .order('level_required', { ascending: true })
+
+  if (!allAnimals || allAnimals.length === 0) return []
+
+  // Get already unlocked animal IDs
+  const { data: unlocked } = await supabase
+    .from('profile_animals')
+    .select('animal_id')
+    .eq('profile_id', profileId)
+
+  const unlockedIds = new Set((unlocked ?? []).map((u: { animal_id: string }) => u.animal_id))
+
+  // Find newly unlockable animals
+  const toUnlock = (allAnimals as FantasticAnimal[]).filter((a) => !unlockedIds.has(a.id))
+  if (toUnlock.length === 0) return []
+
+  // Insert new unlocks
+  await supabase.from('profile_animals').insert(
+    toUnlock.map((a) => ({ profile_id: profileId, animal_id: a.id })),
+  )
+
+  return toUnlock
 }
 
 // Hash PIN with SHA-256
