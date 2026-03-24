@@ -158,7 +158,6 @@ export default function WeeklyEasyView({ profileId, color }: WeeklyEasyViewProps
                 style={{
                   backgroundColor: isFuture ? '#F3F4F6' : LEVEL_COLORS[level],
                   height: 52,
-                  ringColor: color,
                   outline: isToday ? `2px solid ${color}` : 'none',
                 }}
                 title={`${DAY_FULL[i]}: ${LEVEL_LABELS[level]}${data?.total ? ` (${data.goodCount}/${data.total} Bé)` : ''}`}
