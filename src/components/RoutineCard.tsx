@@ -7,7 +7,6 @@ interface RoutineCardProps {
   routine: Routine
   log?: RoutineLog | null
   onClick: () => void
-  isJuliaMode?: boolean
   index?: number
 }
 
@@ -21,7 +20,6 @@ export default function RoutineCard({
   routine,
   log,
   onClick,
-  isJuliaMode = false,
   index = 0,
 }: RoutineCardProps) {
   const categoryColor = CATEGORY_COLORS[routine.category]
@@ -36,9 +34,8 @@ export default function RoutineCard({
       whileTap={{ scale: 0.97 }}
       onClick={onClick}
       className={`
-        w-full text-left rounded-2xl shadow-sm overflow-hidden transition-all
+        w-full text-left rounded-2xl shadow-sm overflow-hidden transition-all p-4
         ${isDone ? 'opacity-80' : 'hover:shadow-md'}
-        ${isJuliaMode ? 'p-5' : 'p-4'}
         bg-white border-2
       `}
       style={{
@@ -54,20 +51,14 @@ export default function RoutineCard({
         />
 
         {/* Emoji */}
-        <span className={isJuliaMode ? 'text-5xl' : 'text-3xl'}>{routine.emoji}</span>
+        <span className="text-3xl">{routine.emoji}</span>
 
         {/* Text */}
         <div className="flex-1 min-w-0">
-          <p
-            className={`font-black text-gray-800 leading-tight ${
-              isJuliaMode ? 'text-xl' : 'text-base'
-            }`}
-          >
+          <p className="font-black text-gray-800 leading-tight text-base">
             {routine.name}
           </p>
-          {!isJuliaMode && (
-            <p className="text-gray-500 text-xs mt-0.5 truncate">{routine.description}</p>
-          )}
+          <p className="text-gray-500 text-xs mt-0.5 truncate">{routine.description}</p>
         </div>
 
         {/* Status */}
@@ -78,25 +69,18 @@ export default function RoutineCard({
               animate={{ scale: 1 }}
               className="flex flex-col items-center"
             >
-              <span className={isJuliaMode ? 'text-3xl' : 'text-2xl'}>{score?.emoji}</span>
-              {!isJuliaMode && (
-                <span className="text-xs font-bold" style={{ color: score?.color }}>
-                  {log?.points_awarded !== undefined && log.points_awarded > 0
-                    ? `+${log.points_awarded}`
-                    : log?.points_awarded}
-                  &nbsp;pts
-                </span>
-              )}
+              <span className="text-2xl">{score?.emoji}</span>
+              <span className="text-xs font-bold" style={{ color: score?.color }}>
+                {log?.points_awarded !== undefined && log.points_awarded > 0
+                  ? `+${log.points_awarded}`
+                  : log?.points_awarded}
+                &nbsp;pts
+              </span>
             </motion.div>
           ) : (
-            <div
-              className={`
-                rounded-full bg-gray-100 flex items-center justify-center
-                ${isJuliaMode ? 'w-12 h-12' : 'w-8 h-8'}
-              `}
-            >
+            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
               <svg
-                className={`text-gray-400 ${isJuliaMode ? 'w-6 h-6' : 'w-4 h-4'}`}
+                className="w-4 h-4 text-gray-400"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -114,7 +98,7 @@ export default function RoutineCard({
       </div>
 
       {/* Points info (not done) */}
-      {!isDone && !isJuliaMode && (
+      {!isDone && (
         <div className="flex gap-3 mt-2 ml-7">
           <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full font-semibold">
             Bé: +{routine.base_points_good} pts

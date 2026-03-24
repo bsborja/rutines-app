@@ -5,20 +5,31 @@ import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { useSession } from '@/context/SessionContext'
 import { useProfile, useAllProfiles } from '@/hooks/useProfile'
-import { useRoutines, useTodayLogs } from '@/hooks/useRoutines'
-import { Routine, RoutineLog, CATEGORY_LABELS, RoutineCategory, Profile } from '@/types'
+import { useRoutines, useTodayLogs, useProfileRoutinePoints } from '@/hooks/useRoutines'
+import {
+  Routine, RoutineLog, CATEGORY_LABELS, RoutineCategory, Profile, EffectivePoints
+} from '@/types'
 import Navbar from '@/components/Navbar'
 import RoutineCard from '@/components/RoutineCard'
 import BehaviorSelector from '@/components/BehaviorSelector'
 import CelebrationOverlay from '@/components/CelebrationOverlay'
 import LevelProgress from '@/components/LevelProgress'
 import WeeklyStats from '@/components/WeeklyStats'
+import WeeklyEasyView from '@/components/WeeklyEasyView'
+import ActivityHeatmap from '@/components/ActivityHeatmap'
+import HistoryLog from '@/components/HistoryLog'
 import RewardProgress from '@/components/RewardProgress'
 import BadgesDisplay from '@/components/BadgesDisplay'
 import AvatarUpload from '@/components/AvatarUpload'
+import PointsTable from '@/components/PointsTable'
 import { supabase } from '@/lib/supabase'
-import { updateProfilePoints, checkAndAwardBadges, getWeeklyPoints } from '@/lib/points'
-import { playSuccessSound, resumeAudio } from '@/lib/sound'
+import {
+  updateProfilePoints, checkAndAwardBadges, getWeeklyPoints,
+  getEffectivePoints, calcMaxWeeklyPoints, calcPointsPerEuro,
+} from '@/lib/points'
+import { updateWalletEuros } from '@/lib/wallet'
+import Wallet from '@/components/Wallet'
+import { resumeAudio } from '@/lib/sound'
 import { BehaviorScore } from '@/types'
 
 const CATEGORIES: RoutineCategory[] = ['mati', 'tarda', 'nit', 'cap_de_setmana']
@@ -31,6 +42,10 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
   const { profiles: allProfiles } = useAllProfiles()
   const { routines, loading: routinesLoading } = useRoutines()
   const { logs, loggedRoutineIds, loading: logsLoading } = useTodayLogs(profileId)
+  const [targetProfileId, setTargetProfileId] = useState(profileId) // for parent logging
+  // Load routine point overrides for the currently viewed girl
+  const effectiveTargetId = isParent ? targetProfileId : profileId
+  const { points: profilePointsMap } = useProfileRoutinePoints(effectiveTargetId)
 
   const [selectedRoutine, setSelectedRoutine] = useState<Routine | null>(null)
   const [celebration, setCelebration] = useState<{ visible: boolean; message: string; sub: string }>({
@@ -38,8 +53,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
     message: '',
     sub: '',
   })
-  const [activeTab, setActiveTab] = useState<'rutines' | 'stats' | 'perfil'>('rutines')
-  const [targetProfileId, setTargetProfileId] = useState(profileId) // for parent logging
+  const [activeTab, setActiveTab] = useState<'rutines' | 'stats' | 'historial' | 'perfil'>('rutines')
 
   // Auth guard
   useEffect(() => {
@@ -55,7 +69,6 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
     )
   }
 
-  const isJuliaMode = profile.is_julia_mode
   const isViewingOwnProfile = session?.profileId === profileId
   const girls = allProfiles.filter((p) => p.role === 'nena')
 
@@ -81,7 +94,26 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
     const loggedBy = session.profileId
     const targetId = isParent ? targetProfileId : profileId
 
-    // Insert log
+    // Check if this routine already has a log today (to avoid double-counting)
+    const { data: existingLogs } = await supabase
+      .from('routine_logs')
+      .select('id, points_awarded')
+      .eq('profile_id', targetId)
+      .eq('routine_id', selectedRoutine.id)
+      .gte('created_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
+      .lt('created_at', new Date(new Date().setHours(24, 0, 0, 0)).toISOString())
+      .limit(1)
+
+    const existingLog = existingLogs?.[0]
+
+    if (existingLog) {
+      // Revert old points, delete old log, and reverse wallet
+      await updateProfilePoints(targetId, -existingLog.points_awarded)
+      await updateWalletEuros(targetId, -existingLog.points_awarded / pointsPerEuro)
+      await supabase.from('routine_logs').delete().eq('id', existingLog.id)
+    }
+
+    // Insert new log
     const { error } = await supabase.from('routine_logs').insert({
       profile_id: targetId,
       routine_id: selectedRoutine.id,
@@ -96,11 +128,11 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
       return
     }
 
-    // Update total points
+    // Update total points and wallet
     await updateProfilePoints(targetId, points)
+    await updateWalletEuros(targetId, points / pointsPerEuro)
 
     if (score === 'good') {
-      playSuccessSound()
       const newBadges = await checkAndAwardBadges(targetId)
 
       const targetProfile = allProfiles.find((p) => p.id === targetId)
@@ -116,10 +148,14 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
   }
 
   // For parent: which girl is being viewed
-  const effectiveProfileId = isParent ? targetProfileId : profileId
+  const effectiveProfileId = effectiveTargetId
   const effectiveProfile = isParent
     ? allProfiles.find((p) => p.id === targetProfileId) || profile
     : profile
+
+  // Dynamic economics for the effective profile
+  const maxWeeklyPoints = calcMaxWeeklyPoints(routines, profilePointsMap)
+  const pointsPerEuro = calcPointsPerEuro(maxWeeklyPoints)
 
   return (
     <div
@@ -171,39 +207,26 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
           </div>
         )}
 
-        {/* Julia greeting */}
-        {isJuliaMode && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-4 text-center"
-          >
-            <p className="text-5xl mb-1">👋</p>
-            <h2 className="text-4xl font-black" style={{ color: profile.color }}>
-              Hola, {profile.name}!
-            </h2>
-          </motion.div>
-        )}
-
-        {/* Tabs (non-Julia) */}
-        {!isJuliaMode && (
-          <div className="flex bg-white rounded-2xl p-1 mt-4 mb-4 shadow-sm">
-            {(['rutines', 'stats', 'perfil'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${
-                  activeTab === tab ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab === 'rutines' ? '📋 Rutines' : tab === 'stats' ? '📊 Estadístiques' : '👤 Perfil'}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Tabs */}
+        <div className="flex bg-white rounded-2xl p-1 mt-4 mb-4 shadow-sm">
+          {(['rutines', 'stats', 'historial', 'perfil'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all ${
+                activeTab === tab ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab === 'rutines' ? '📋' : tab === 'stats' ? '📊' : tab === 'historial' ? '📅' : '👤'}
+              <span className="hidden sm:inline ml-1">
+                {tab === 'rutines' ? 'Rutines' : tab === 'stats' ? 'Stats' : tab === 'historial' ? 'Historial' : 'Perfil'}
+              </span>
+            </button>
+          ))}
+        </div>
 
         {/* ===== RUTINES TAB ===== */}
-        {(activeTab === 'rutines' || isJuliaMode) && (
+        {activeTab === 'rutines' && (
           <div className="space-y-6 mt-2">
             {CATEGORIES.map((category) => {
               const catRoutines = getRoutinesByCategory(category)
@@ -216,7 +239,6 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
                   routines={catRoutines}
                   logs={logs}
                   effectiveProfileId={effectiveProfileId}
-                  isJuliaMode={isJuliaMode}
                   onRoutineClick={(r) => setSelectedRoutine(r)}
                 />
               )
@@ -225,21 +247,59 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
         )}
 
         {/* ===== STATS TAB ===== */}
-        {activeTab === 'stats' && !isJuliaMode && (
+        {activeTab === 'stats' && (
           <div className="space-y-4">
-            <WeeklyStats profileId={effectiveProfileId} color={effectiveProfile.color} />
+            <WeeklyEasyView profileId={effectiveProfileId} color={effectiveProfile.color} />
+            <WeeklyStats
+              profileId={effectiveProfileId}
+              color={effectiveProfile.color}
+              maxWeeklyPoints={maxWeeklyPoints}
+              pointsPerEuro={pointsPerEuro}
+            />
             <LevelProgress totalPoints={effectiveProfile.total_points} color={effectiveProfile.color} />
-            <RewardProgressWrapper profileId={effectiveProfileId} color={effectiveProfile.color} />
+            <RewardProgressWrapper
+              profileId={effectiveProfileId}
+              color={effectiveProfile.color}
+              pointsPerEuro={pointsPerEuro}
+            />
             <BadgesDisplay profileId={effectiveProfileId} color={effectiveProfile.color} />
+            {isParent && (
+              <PointsTable routines={routines} girls={girls} />
+            )}
+          </div>
+        )}
+
+        {/* ===== HISTORIAL TAB ===== */}
+        {activeTab === 'historial' && (
+          <div className="space-y-4">
+            <ActivityHeatmap profileId={effectiveProfileId} color={effectiveProfile.color} />
+            <HistoryLog
+              profileId={effectiveProfileId}
+              color={effectiveProfile.color}
+              isParent={isParent}
+              pointsPerEuro={pointsPerEuro}
+              profilePointsMap={profilePointsMap}
+              routines={routines}
+            />
           </div>
         )}
 
         {/* ===== PERFIL TAB ===== */}
-        {activeTab === 'perfil' && !isJuliaMode && (
-          <ProfileTab
-            profile={effectiveProfile}
-            isEditable={session?.profileId === effectiveProfileId || isParent}
-          />
+        {activeTab === 'perfil' && (
+          <div className="space-y-4">
+            <ProfileTab
+              profile={effectiveProfile}
+              isEditable={session?.profileId === effectiveProfileId || isParent}
+            />
+            {effectiveProfile.role === 'nena' && (
+              <Wallet
+                profileId={effectiveProfileId}
+                color={effectiveProfile.color}
+                name={effectiveProfile.name}
+                isParent={isParent}
+              />
+            )}
+          </div>
         )}
       </main>
 
@@ -247,7 +307,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
       {selectedRoutine && (
         <BehaviorSelector
           routine={selectedRoutine}
-          isJuliaMode={isJuliaMode}
+          effectivePoints={getEffectivePoints(selectedRoutine, profilePointsMap)}
           loggedByParent={isParent}
           onSelect={handleBehaviorSelect}
           onCancel={() => setSelectedRoutine(null)}
@@ -259,12 +319,8 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
         visible={celebration.visible}
         message={celebration.message}
         subMessage={celebration.sub}
-        isJuliaMode={isJuliaMode}
         onComplete={() => setCelebration((prev) => ({ ...prev, visible: false }))}
       />
-
-      {/* Julia bottom stats */}
-      {isJuliaMode && <JuliaBottomBar profileId={profileId} color={profile.color} />}
     </div>
   )
 }
@@ -274,14 +330,12 @@ function CategorySection({
   routines,
   logs,
   effectiveProfileId,
-  isJuliaMode,
   onRoutineClick,
 }: {
   category: RoutineCategory
   routines: Routine[]
   logs: RoutineLog[]
   effectiveProfileId: string
-  isJuliaMode: boolean
   onRoutineClick: (r: Routine) => void
 }) {
   const doneCount = routines.filter((r) => logs.some((l) => l.routine_id === r.id && l.profile_id === effectiveProfileId)).length
@@ -289,15 +343,15 @@ function CategorySection({
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <h3 className={`font-black text-gray-700 ${isJuliaMode ? 'text-2xl' : 'text-base'}`}>
+        <h3 className="font-black text-gray-700 text-base">
           {CATEGORY_LABELS[category]}
         </h3>
-        <span className={`font-bold text-gray-400 ${isJuliaMode ? 'text-lg' : 'text-sm'}`}>
+        <span className="font-bold text-gray-400 text-sm">
           {doneCount}/{routines.length}
         </span>
       </div>
 
-      <div className={`space-y-${isJuliaMode ? '4' : '2'}`}>
+      <div className="space-y-2">
         {routines.map((routine, i) => {
           const log = logs.find((l) => l.routine_id === routine.id && l.profile_id === effectiveProfileId)
           return (
@@ -306,7 +360,6 @@ function CategorySection({
               routine={routine}
               log={log}
               onClick={() => onRoutineClick(routine)}
-              isJuliaMode={isJuliaMode}
               index={i}
             />
           )
@@ -316,14 +369,16 @@ function CategorySection({
   )
 }
 
-function RewardProgressWrapper({ profileId, color }: { profileId: string; color: string }) {
+function RewardProgressWrapper({
+  profileId, color, pointsPerEuro,
+}: { profileId: string; color: string; pointsPerEuro: number }) {
   const [weeklyPoints, setWeeklyPoints] = useState(0)
 
   useEffect(() => {
     getWeeklyPoints(profileId).then(setWeeklyPoints)
   }, [profileId])
 
-  return <RewardProgress weeklyPoints={weeklyPoints} color={color} />
+  return <RewardProgress weeklyPoints={weeklyPoints} color={color} pointsPerEuro={pointsPerEuro} />
 }
 
 function ProfileTab({ profile, isEditable }: { profile: Profile; isEditable: boolean }) {
@@ -353,24 +408,6 @@ function ProfileTab({ profile, isEditable }: { profile: Profile; isEditable: boo
       </div>
       <LevelProgress totalPoints={profile.total_points} color={profile.color} />
       <BadgesDisplay profileId={profile.id} color={profile.color} />
-    </div>
-  )
-}
-
-function JuliaBottomBar({ profileId, color }: { profileId: string; color: string }) {
-  const [weeklyPoints, setWeeklyPoints] = useState(0)
-
-  useEffect(() => {
-    getWeeklyPoints(profileId).then(setWeeklyPoints)
-  }, [profileId])
-
-  return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-100 p-4 flex items-center justify-center gap-4">
-      <span className="text-3xl">⭐</span>
-      <div className="text-center">
-        <p className="text-3xl font-black" style={{ color }}>{weeklyPoints}</p>
-        <p className="text-xs text-gray-400 font-semibold">punts aquesta setmana</p>
-      </div>
     </div>
   )
 }

@@ -31,6 +31,20 @@ export default function PinModal({
 
   const MAX_DIGITS = 4
 
+  // Physical keyboard support
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (loading) return
+      if (e.key >= '0' && e.key <= '9') {
+        handleDigit(e.key)
+      } else if (e.key === 'Backspace') {
+        handleDelete()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  })
+
   function handleDigit(digit: string) {
     if (loading) return
 
