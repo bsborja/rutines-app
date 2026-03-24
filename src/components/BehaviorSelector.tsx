@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { BehaviorScore, Routine } from '@/types'
+import { BehaviorScore, Routine, EffectivePoints } from '@/types'
 import { playOkSound, playBadSound, resumeAudio } from '@/lib/sound'
 
 interface BehaviorOption {
@@ -18,6 +18,7 @@ interface BehaviorOption {
 
 interface BehaviorSelectorProps {
   routine: Routine
+  effectivePoints?: EffectivePoints  // per-profile overrides; fallback to base if absent
   loggedByParent?: boolean
   onSelect: (score: BehaviorScore, points: number) => Promise<void>
   onCancel: () => void
@@ -25,6 +26,7 @@ interface BehaviorSelectorProps {
 
 export default function BehaviorSelector({
   routine,
+  effectivePoints,
   loggedByParent = false,
   onSelect,
   onCancel,
@@ -32,9 +34,16 @@ export default function BehaviorSelector({
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<BehaviorScore | null>(null)
 
+  // Resolve actual points: override > base
+  const pts = effectivePoints ?? {
+    good: routine.base_points_good,
+    ok: routine.base_points_ok,
+    bad: routine.base_points_bad,
+  }
+
   const badPoints = loggedByParent
-    ? Math.round(routine.base_points_bad * 1.5)
-    : routine.base_points_bad
+    ? Math.round(pts.bad * 1.5)
+    : pts.bad
 
   const options: BehaviorOption[] = [
     {
@@ -45,7 +54,7 @@ export default function BehaviorSelector({
       bg: '#F0FBE4',
       border: '#58CC02',
       description: 'Ho ha fet genial',
-      pointsDelta: routine.base_points_good,
+      pointsDelta: pts.good,
     },
     {
       score: 'ok',
@@ -55,7 +64,7 @@ export default function BehaviorSelector({
       bg: '#FFF8EC',
       border: '#FF9600',
       description: 'Ho ha fet, però amb dificultats',
-      pointsDelta: routine.base_points_ok,
+      pointsDelta: pts.ok,
     },
     {
       score: 'bad',

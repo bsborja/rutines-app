@@ -42,7 +42,7 @@ export default function LeaderboardPage() {
           className="mt-6 bg-blue-50 rounded-2xl p-4 border border-blue-100"
         >
           <p className="text-blue-700 text-sm text-center font-semibold">
-            💡 La classificació mostra el percentatge relatiu sense revelar els punts exactes
+            💡 Els punts mostrats són els d'aquesta setmana o mes. Els punts totals determinen el nivell.
           </p>
         </motion.div>
       </main>

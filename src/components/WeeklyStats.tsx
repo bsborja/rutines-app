@@ -3,15 +3,21 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { getWeeklyPoints, getMonthlyPoints, pointsToEuros } from '@/lib/points'
+import { MAX_WEEKLY_EUROS } from '@/types'
 
 interface WeeklyStatsProps {
   profileId: string
   color: string
+  maxWeeklyPoints: number   // theoretical max (all routines "Bé" every day)
+  pointsPerEuro: number     // dynamic ratio for this profile
 }
 
-const WEEKLY_GOAL = 100
-
-export default function WeeklyStats({ profileId, color }: WeeklyStatsProps) {
+export default function WeeklyStats({
+  profileId,
+  color,
+  maxWeeklyPoints,
+  pointsPerEuro,
+}: WeeklyStatsProps) {
   const [weeklyPoints, setWeeklyPoints] = useState(0)
   const [monthlyPoints, setMonthlyPoints] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -30,9 +36,10 @@ export default function WeeklyStats({ profileId, color }: WeeklyStatsProps) {
     load()
   }, [profileId])
 
-  const weekProgress = Math.min(weeklyPoints / WEEKLY_GOAL, 1)
-  const weekEuros = pointsToEuros(weeklyPoints)
-  const monthEuros = pointsToEuros(monthlyPoints)
+  const goal = maxWeeklyPoints > 0 ? maxWeeklyPoints : 540
+  const weekProgress = Math.min(weeklyPoints / goal, 1)
+  const weekEuros = Math.min(pointsToEuros(weeklyPoints, pointsPerEuro), MAX_WEEKLY_EUROS)
+  const monthEuros = pointsToEuros(monthlyPoints, pointsPerEuro)
 
   if (loading) {
     return (
@@ -52,9 +59,11 @@ export default function WeeklyStats({ profileId, color }: WeeklyStatsProps) {
         <div className="flex justify-between items-end mb-1">
           <div>
             <span className="text-3xl font-black" style={{ color }}>{weeklyPoints}</span>
-            <span className="text-gray-400 text-sm ml-1">/ {WEEKLY_GOAL} pts</span>
+            <span className="text-gray-400 text-sm ml-1">/ {goal} pts</span>
           </div>
-          <span className="text-gray-500 text-sm font-semibold">{weekEuros.toFixed(2)}€</span>
+          <span className="text-2xl font-black" style={{ color }}>
+            {weekEuros.toFixed(2)}€
+          </span>
         </div>
 
         <div className="w-full h-5 bg-gray-100 rounded-full overflow-hidden">
@@ -70,9 +79,9 @@ export default function WeeklyStats({ profileId, color }: WeeklyStatsProps) {
         </div>
 
         <div className="flex justify-between mt-1">
-          <span className="text-xs text-gray-400">0 pts</span>
+          <span className="text-xs text-gray-400">0€</span>
           <span className="text-xs text-gray-400">
-            {weekProgress >= 1 ? '🎉 Objectiu assolit!' : `${WEEKLY_GOAL} pts (${(WEEKLY_GOAL / 40).toFixed(2)}€)`}
+            {weekProgress >= 1 ? '🎉 Màxim assolit!' : `màx. ${MAX_WEEKLY_EUROS.toFixed(2)}€/setmana`}
           </span>
         </div>
       </div>

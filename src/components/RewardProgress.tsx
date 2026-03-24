@@ -1,43 +1,42 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { REWARD_TYPES, POINTS_PER_EURO } from '@/types'
+import { REWARD_TYPES, MAX_WEEKLY_EUROS } from '@/types'
 import { pointsToEuros } from '@/lib/points'
 
 interface RewardProgressProps {
   weeklyPoints: number
   color: string
+  pointsPerEuro: number  // dynamic ratio for this profile
 }
 
-export default function RewardProgress({ weeklyPoints, color }: RewardProgressProps) {
-  const euros = pointsToEuros(weeklyPoints)
+export default function RewardProgress({ weeklyPoints, color, pointsPerEuro }: RewardProgressProps) {
+  const euros = Math.min(pointsToEuros(weeklyPoints, pointsPerEuro), MAX_WEEKLY_EUROS)
 
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-black text-gray-800">Recompenses</h3>
         <div className="text-right">
-          <p className="text-xl font-black" style={{ color }}>{weeklyPoints} pts</p>
-          <p className="text-xs text-gray-500">{euros.toFixed(2)}€ setmana</p>
+          <p className="text-xl font-black" style={{ color }}>{euros.toFixed(2)}€</p>
+          <p className="text-xs text-gray-500">aquesta setmana</p>
         </div>
       </div>
 
       <div className="space-y-3">
         {REWARD_TYPES.map((reward) => {
-          const progress = Math.min(weeklyPoints / reward.pointsRequired, 1)
+          const progress = Math.min(euros / reward.eurosRequired, 1)
           const percentage = Math.round(progress * 100)
-          const unlocked = weeklyPoints >= reward.pointsRequired
-          const remaining = Math.max(0, reward.pointsRequired - weeklyPoints)
+          const unlocked = euros >= reward.eurosRequired
+          const remaining = Math.max(0, reward.eurosRequired - euros).toFixed(2)
+          // Weeks needed if earning MAX_WEEKLY_EUROS per week
+          const weeksNeeded = Math.ceil(reward.eurosRequired / MAX_WEEKLY_EUROS)
 
           return (
             <div key={reward.id} className="relative">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-xl">{reward.emoji}</span>
-                <p
-                  className={`text-sm font-semibold flex-1 ${
-                    unlocked ? 'text-gray-800' : 'text-gray-600'
-                  }`}
-                >
+                <p className={`text-sm font-semibold flex-1 ${unlocked ? 'text-gray-800' : 'text-gray-600'}`}>
                   {reward.label}
                 </p>
                 <span
@@ -63,10 +62,10 @@ export default function RewardProgress({ weeklyPoints, color }: RewardProgressPr
 
               <div className="flex justify-between mt-0.5">
                 <span className="text-xs text-gray-400">
-                  {reward.pointsRequired} pts = {(reward.pointsRequired / POINTS_PER_EURO).toFixed(2)}€
+                  {reward.eurosRequired.toFixed(2)}€ · ~{weeksNeeded} setmanes perfectes
                 </span>
                 {!unlocked && (
-                  <span className="text-xs text-gray-400">falten {remaining} pts</span>
+                  <span className="text-xs text-gray-400">falten {remaining}€</span>
                 )}
               </div>
             </div>

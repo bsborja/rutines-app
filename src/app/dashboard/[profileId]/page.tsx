@@ -5,19 +5,30 @@ import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { useSession } from '@/context/SessionContext'
 import { useProfile, useAllProfiles } from '@/hooks/useProfile'
-import { useRoutines, useTodayLogs } from '@/hooks/useRoutines'
-import { Routine, RoutineLog, CATEGORY_LABELS, RoutineCategory, Profile } from '@/types'
+import { useRoutines, useTodayLogs, useProfileRoutinePoints } from '@/hooks/useRoutines'
+import {
+  Routine, RoutineLog, CATEGORY_LABELS, RoutineCategory, Profile, EffectivePoints
+} from '@/types'
 import Navbar from '@/components/Navbar'
 import RoutineCard from '@/components/RoutineCard'
 import BehaviorSelector from '@/components/BehaviorSelector'
 import CelebrationOverlay from '@/components/CelebrationOverlay'
 import LevelProgress from '@/components/LevelProgress'
 import WeeklyStats from '@/components/WeeklyStats'
+import WeeklyEasyView from '@/components/WeeklyEasyView'
+import ActivityHeatmap from '@/components/ActivityHeatmap'
+import HistoryLog from '@/components/HistoryLog'
 import RewardProgress from '@/components/RewardProgress'
 import BadgesDisplay from '@/components/BadgesDisplay'
 import AvatarUpload from '@/components/AvatarUpload'
+import PointsTable from '@/components/PointsTable'
 import { supabase } from '@/lib/supabase'
-import { updateProfilePoints, checkAndAwardBadges, getWeeklyPoints } from '@/lib/points'
+import {
+  updateProfilePoints, checkAndAwardBadges, getWeeklyPoints,
+  getEffectivePoints, calcMaxWeeklyPoints, calcPointsPerEuro,
+} from '@/lib/points'
+import { updateWalletEuros } from '@/lib/wallet'
+import Wallet from '@/components/Wallet'
 import { resumeAudio } from '@/lib/sound'
 import { BehaviorScore } from '@/types'
 
@@ -31,6 +42,10 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
   const { profiles: allProfiles } = useAllProfiles()
   const { routines, loading: routinesLoading } = useRoutines()
   const { logs, loggedRoutineIds, loading: logsLoading } = useTodayLogs(profileId)
+  const [targetProfileId, setTargetProfileId] = useState(profileId) // for parent logging
+  // Load routine point overrides for the currently viewed girl
+  const effectiveTargetId = isParent ? targetProfileId : profileId
+  const { points: profilePointsMap } = useProfileRoutinePoints(effectiveTargetId)
 
   const [selectedRoutine, setSelectedRoutine] = useState<Routine | null>(null)
   const [celebration, setCelebration] = useState<{ visible: boolean; message: string; sub: string }>({
@@ -38,8 +53,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
     message: '',
     sub: '',
   })
-  const [activeTab, setActiveTab] = useState<'rutines' | 'stats' | 'perfil'>('rutines')
-  const [targetProfileId, setTargetProfileId] = useState(profileId) // for parent logging
+  const [activeTab, setActiveTab] = useState<'rutines' | 'stats' | 'historial' | 'perfil'>('rutines')
 
   // Auth guard
   useEffect(() => {
@@ -93,8 +107,9 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
     const existingLog = existingLogs?.[0]
 
     if (existingLog) {
-      // Revert old points and delete old log
+      // Revert old points, delete old log, and reverse wallet
       await updateProfilePoints(targetId, -existingLog.points_awarded)
+      await updateWalletEuros(targetId, -existingLog.points_awarded / pointsPerEuro)
       await supabase.from('routine_logs').delete().eq('id', existingLog.id)
     }
 
@@ -113,8 +128,9 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
       return
     }
 
-    // Update total points
+    // Update total points and wallet
     await updateProfilePoints(targetId, points)
+    await updateWalletEuros(targetId, points / pointsPerEuro)
 
     if (score === 'good') {
       const newBadges = await checkAndAwardBadges(targetId)
@@ -132,10 +148,14 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
   }
 
   // For parent: which girl is being viewed
-  const effectiveProfileId = isParent ? targetProfileId : profileId
+  const effectiveProfileId = effectiveTargetId
   const effectiveProfile = isParent
     ? allProfiles.find((p) => p.id === targetProfileId) || profile
     : profile
+
+  // Dynamic economics for the effective profile
+  const maxWeeklyPoints = calcMaxWeeklyPoints(routines, profilePointsMap)
+  const pointsPerEuro = calcPointsPerEuro(maxWeeklyPoints)
 
   return (
     <div
@@ -189,15 +209,18 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
 
         {/* Tabs */}
         <div className="flex bg-white rounded-2xl p-1 mt-4 mb-4 shadow-sm">
-          {(['rutines', 'stats', 'perfil'] as const).map((tab) => (
+          {(['rutines', 'stats', 'historial', 'perfil'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${
+              className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all ${
                 activeTab === tab ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              {tab === 'rutines' ? '📋 Rutines' : tab === 'stats' ? '📊 Estadístiques' : '👤 Perfil'}
+              {tab === 'rutines' ? '📋' : tab === 'stats' ? '📊' : tab === 'historial' ? '📅' : '👤'}
+              <span className="hidden sm:inline ml-1">
+                {tab === 'rutines' ? 'Rutines' : tab === 'stats' ? 'Stats' : tab === 'historial' ? 'Historial' : 'Perfil'}
+              </span>
             </button>
           ))}
         </div>
@@ -226,19 +249,57 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
         {/* ===== STATS TAB ===== */}
         {activeTab === 'stats' && (
           <div className="space-y-4">
-            <WeeklyStats profileId={effectiveProfileId} color={effectiveProfile.color} />
+            <WeeklyEasyView profileId={effectiveProfileId} color={effectiveProfile.color} />
+            <WeeklyStats
+              profileId={effectiveProfileId}
+              color={effectiveProfile.color}
+              maxWeeklyPoints={maxWeeklyPoints}
+              pointsPerEuro={pointsPerEuro}
+            />
             <LevelProgress totalPoints={effectiveProfile.total_points} color={effectiveProfile.color} />
-            <RewardProgressWrapper profileId={effectiveProfileId} color={effectiveProfile.color} />
+            <RewardProgressWrapper
+              profileId={effectiveProfileId}
+              color={effectiveProfile.color}
+              pointsPerEuro={pointsPerEuro}
+            />
             <BadgesDisplay profileId={effectiveProfileId} color={effectiveProfile.color} />
+            {isParent && (
+              <PointsTable routines={routines} girls={girls} />
+            )}
+          </div>
+        )}
+
+        {/* ===== HISTORIAL TAB ===== */}
+        {activeTab === 'historial' && (
+          <div className="space-y-4">
+            <ActivityHeatmap profileId={effectiveProfileId} color={effectiveProfile.color} />
+            <HistoryLog
+              profileId={effectiveProfileId}
+              color={effectiveProfile.color}
+              isParent={isParent}
+              pointsPerEuro={pointsPerEuro}
+              profilePointsMap={profilePointsMap}
+              routines={routines}
+            />
           </div>
         )}
 
         {/* ===== PERFIL TAB ===== */}
         {activeTab === 'perfil' && (
-          <ProfileTab
-            profile={effectiveProfile}
-            isEditable={session?.profileId === effectiveProfileId || isParent}
-          />
+          <div className="space-y-4">
+            <ProfileTab
+              profile={effectiveProfile}
+              isEditable={session?.profileId === effectiveProfileId || isParent}
+            />
+            {effectiveProfile.role === 'nena' && (
+              <Wallet
+                profileId={effectiveProfileId}
+                color={effectiveProfile.color}
+                name={effectiveProfile.name}
+                isParent={isParent}
+              />
+            )}
+          </div>
         )}
       </main>
 
@@ -246,6 +307,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
       {selectedRoutine && (
         <BehaviorSelector
           routine={selectedRoutine}
+          effectivePoints={getEffectivePoints(selectedRoutine, profilePointsMap)}
           loggedByParent={isParent}
           onSelect={handleBehaviorSelect}
           onCancel={() => setSelectedRoutine(null)}
@@ -307,14 +369,16 @@ function CategorySection({
   )
 }
 
-function RewardProgressWrapper({ profileId, color }: { profileId: string; color: string }) {
+function RewardProgressWrapper({
+  profileId, color, pointsPerEuro,
+}: { profileId: string; color: string; pointsPerEuro: number }) {
   const [weeklyPoints, setWeeklyPoints] = useState(0)
 
   useEffect(() => {
     getWeeklyPoints(profileId).then(setWeeklyPoints)
   }, [profileId])
 
-  return <RewardProgress weeklyPoints={weeklyPoints} color={color} />
+  return <RewardProgress weeklyPoints={weeklyPoints} color={color} pointsPerEuro={pointsPerEuro} />
 }
 
 function ProfileTab({ profile, isEditable }: { profile: Profile; isEditable: boolean }) {
@@ -347,4 +411,3 @@ function ProfileTab({ profile, isEditable }: { profile: Profile; isEditable: boo
     </div>
   )
 }
-
