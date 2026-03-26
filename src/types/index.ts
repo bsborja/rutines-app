@@ -27,6 +27,7 @@ export interface Routine {
   base_points_ok: number
   base_points_bad: number
   is_weekend_only: boolean
+  is_active?: boolean
   emoji: string
   order_index: number
 }
@@ -92,6 +93,8 @@ export const LEVEL_THRESHOLDS: Record<number, LevelName> = {
 }
 
 export const LEVEL_POINTS: number[] = [0, 200, 600, 1500, 3500]
+
+export const POINTS_PER_EURO = 40
 
 export const LEVEL_EMOJIS: Record<number, string> = {
   1: '🌱',
