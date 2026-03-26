@@ -111,19 +111,17 @@ export default function AdminPanel({ profiles, routines }: AdminPanelProps) {
   return (
     <div className="space-y-4">
       {/* Tab bar */}
-      <div className="flex gap-1 overflow-x-auto pb-1">
+      <div className="grid grid-cols-3 gap-2 mb-4">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs transition-all border-2 ${
-              activeTab === tab.id
-                ? 'bg-gray-800 text-white border-gray-800'
-                : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'
+            className={`py-2.5 px-2 rounded-xl font-black text-xs transition-all text-center ${
+              activeTab === tab.id ? 'bg-gray-800 text-white shadow' : 'bg-white text-gray-500 border border-gray-200'
             }`}
           >
-            <span>{tab.emoji}</span>
-            <span>{tab.label}</span>
+            <span className="block text-lg">{tab.emoji}</span>
+            <span className="block leading-tight mt-0.5">{tab.label}</span>
           </button>
         ))}
       </div>

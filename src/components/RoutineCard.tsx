@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Routine, RoutineLog, CATEGORY_COLORS } from '@/types'
+import { Routine, RoutineLog, EffectivePoints, CATEGORY_COLORS } from '@/types'
 
 interface RoutineCardProps {
   routine: Routine
@@ -10,6 +10,7 @@ interface RoutineCardProps {
   onClick: () => void
   onSkip?: () => void
   index?: number
+  effectivePoints?: EffectivePoints
 }
 
 const scoreConfig = {
@@ -27,6 +28,7 @@ export default function RoutineCard({
   onClick,
   onSkip,
   index = 0,
+  effectivePoints,
 }: RoutineCardProps) {
   const categoryColor = CATEGORY_COLORS[routine.category]
   const isDone  = !!log
@@ -135,10 +137,10 @@ export default function RoutineCard({
         {!isDone && (
           <div className="flex gap-3 mt-2 ml-7">
             <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full font-semibold">
-              Bé: +{routine.base_points_good} pts
+              Bé: +{effectivePoints?.good ?? routine.base_points_good} pts
             </span>
             <span className="text-xs text-orange-500 bg-orange-50 px-2 py-0.5 rounded-full font-semibold">
-              Regular: +{routine.base_points_ok} pts
+              Regular: +{effectivePoints?.ok ?? routine.base_points_ok} pts
             </span>
           </div>
         )}
