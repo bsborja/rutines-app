@@ -16,12 +16,16 @@ import WeeklyStats from '@/components/WeeklyStats'
 import RewardProgress from '@/components/RewardProgress'
 import BadgesDisplay from '@/components/BadgesDisplay'
 import AvatarUpload from '@/components/AvatarUpload'
+import CollectionView from '@/components/CollectionView'
+import AdminPanel from '@/components/AdminPanel'
 import { supabase } from '@/lib/supabase'
 import { updateProfilePoints, checkAndAwardBadges, getWeeklyPoints } from '@/lib/points'
 import { resumeAudio } from '@/lib/sound'
 import { BehaviorScore } from '@/types'
 
 const CATEGORIES: RoutineCategory[] = ['mati', 'tarda', 'nit', 'cap_de_setmana']
+
+type TabId = 'rutines' | 'colleccio' | 'perfil' | 'gestio'
 
 export default function DashboardPage({ params }: { params: Promise<{ profileId: string }> }) {
   const { profileId } = use(params)
@@ -38,7 +42,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
     message: '',
     sub: '',
   })
-  const [activeTab, setActiveTab] = useState<'rutines' | 'stats' | 'perfil'>('rutines')
+  const [activeTab, setActiveTab] = useState<TabId>('rutines')
   const [targetProfileId, setTargetProfileId] = useState(profileId) // for parent logging
 
   // Auth guard
@@ -137,6 +141,14 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
     ? allProfiles.find((p) => p.id === targetProfileId) || profile
     : profile
 
+  // Tabs configuration
+  const tabs: { id: TabId; label: string; parentOnly?: boolean }[] = [
+    { id: 'rutines', label: '📋 Rutines' },
+    { id: 'colleccio', label: '🏅 Col·lecció' },
+    { id: 'perfil', label: '👤 Perfil' },
+    ...(isParent ? [{ id: 'gestio' as TabId, label: '⚙️ Gestió', parentOnly: true }] : []),
+  ]
+
   return (
     <div
       className="min-h-dvh flex flex-col"
@@ -154,9 +166,9 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
         }
       />
 
-      <main className="flex-1 max-w-2xl mx-auto w-full px-4 pb-24">
+      <main className={`flex-1 mx-auto w-full px-4 pb-24 ${activeTab === 'gestio' ? 'max-w-4xl' : 'max-w-2xl'}`}>
         {/* Parent: girl selector */}
-        {isParent && (
+        {isParent && activeTab !== 'gestio' && (
           <div className="mt-4 mb-2">
             <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">
               Registrant per a:
@@ -188,16 +200,16 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
         )}
 
         {/* Tabs */}
-        <div className="flex bg-white rounded-2xl p-1 mt-4 mb-4 shadow-sm">
-          {(['rutines', 'stats', 'perfil'] as const).map((tab) => (
+        <div className="flex bg-white rounded-2xl p-1 mt-4 mb-4 shadow-sm overflow-x-auto">
+          {tabs.map((tab) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${
-                activeTab === tab ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-700'
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 py-3 text-sm font-black rounded-xl transition-all whitespace-nowrap px-2 ${
+                activeTab === tab.id ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              {tab === 'rutines' ? '📋 Rutines' : tab === 'stats' ? '📊 Estadístiques' : '👤 Perfil'}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -223,21 +235,29 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
           </div>
         )}
 
-        {/* ===== STATS TAB ===== */}
-        {activeTab === 'stats' && (
-          <div className="space-y-4">
-            <WeeklyStats profileId={effectiveProfileId} color={effectiveProfile.color} />
-            <LevelProgress totalPoints={effectiveProfile.total_points} color={effectiveProfile.color} />
-            <RewardProgressWrapper profileId={effectiveProfileId} color={effectiveProfile.color} />
-            <BadgesDisplay profileId={effectiveProfileId} color={effectiveProfile.color} />
-          </div>
+        {/* ===== COL·LECCIÓ TAB ===== */}
+        {activeTab === 'colleccio' && (
+          <CollectionView
+            profileId={effectiveProfileId}
+            totalPoints={effectiveProfile.total_points}
+            color={effectiveProfile.color}
+          />
         )}
 
-        {/* ===== PERFIL TAB ===== */}
+        {/* ===== PERFIL TAB (now includes stats) ===== */}
         {activeTab === 'perfil' && (
           <ProfileTab
             profile={effectiveProfile}
+            profileId={effectiveProfileId}
             isEditable={session?.profileId === effectiveProfileId || isParent}
+          />
+        )}
+
+        {/* ===== GESTIÓ TAB (parents only) ===== */}
+        {activeTab === 'gestio' && isParent && (
+          <AdminPanel
+            profiles={allProfiles}
+            routines={routines}
           />
         )}
       </main>
@@ -317,9 +337,10 @@ function RewardProgressWrapper({ profileId, color }: { profileId: string; color:
   return <RewardProgress weeklyPoints={weeklyPoints} color={color} />
 }
 
-function ProfileTab({ profile, isEditable }: { profile: Profile; isEditable: boolean }) {
+function ProfileTab({ profile, profileId, isEditable }: { profile: Profile; profileId: string; isEditable: boolean }) {
   return (
     <div className="space-y-4">
+      {/* Avatar and name */}
       <div className="bg-white rounded-2xl p-6 shadow-sm flex flex-col items-center gap-4">
         <AvatarUpload
           profileId={profile.id}
@@ -342,9 +363,18 @@ function ProfileTab({ profile, isEditable }: { profile: Profile; isEditable: boo
           )}
         </div>
       </div>
+
+      {/* Weekly stats (merged from stats tab) */}
+      <WeeklyStats profileId={profileId} color={profile.color} />
+
+      {/* Level progress */}
       <LevelProgress totalPoints={profile.total_points} color={profile.color} />
+
+      {/* Rewards */}
+      <RewardProgressWrapper profileId={profileId} color={profile.color} />
+
+      {/* Badges */}
       <BadgesDisplay profileId={profile.id} color={profile.color} />
     </div>
   )
 }
-

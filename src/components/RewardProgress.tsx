@@ -24,10 +24,11 @@ export default function RewardProgress({ weeklyPoints, color }: RewardProgressPr
 
       <div className="space-y-3">
         {REWARD_TYPES.map((reward) => {
-          const progress = Math.min(weeklyPoints / reward.pointsRequired, 1)
+          const pointsRequired = Math.round(reward.eurosRequired * POINTS_PER_EURO)
+          const progress = Math.min(weeklyPoints / pointsRequired, 1)
           const percentage = Math.round(progress * 100)
-          const unlocked = weeklyPoints >= reward.pointsRequired
-          const remaining = Math.max(0, reward.pointsRequired - weeklyPoints)
+          const unlocked = weeklyPoints >= pointsRequired
+          const remaining = Math.max(0, pointsRequired - weeklyPoints)
 
           return (
             <div key={reward.id} className="relative">
@@ -63,10 +64,10 @@ export default function RewardProgress({ weeklyPoints, color }: RewardProgressPr
 
               <div className="flex justify-between mt-0.5">
                 <span className="text-xs text-gray-400">
-                  {reward.pointsRequired} pts = {(reward.pointsRequired / POINTS_PER_EURO).toFixed(2)}€
+                  {pointsRequired} pts = {reward.eurosRequired.toFixed(2)}€
                 </span>
                 {!unlocked && (
-                  <span className="text-xs text-gray-400">falten {remaining} pts</span>
+                  <span className="text-xs text-gray-400">Falten {remaining} pts</span>
                 )}
               </div>
             </div>
