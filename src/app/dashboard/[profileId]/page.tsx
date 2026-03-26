@@ -22,7 +22,8 @@ import RewardProgress from '@/components/RewardProgress'
 import BadgesDisplay from '@/components/BadgesDisplay'
 import FantasticAnimalsDisplay from '@/components/FantasticAnimalsDisplay'
 import AvatarUpload from '@/components/AvatarUpload'
-import PointsTable from '@/components/PointsTable'
+import CollectionView from '@/components/CollectionView'
+import AdminPanel from '@/components/AdminPanel'
 import { supabase } from '@/lib/supabase'
 import {
   updateProfilePoints, checkAndAwardBadges, getWeeklyPoints,
@@ -60,7 +61,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
   })
   const [newAnimals, setNewAnimals] = useState<FantasticAnimal[]>([])
   const [animalIdx, setAnimalIdx] = useState(0)
-  const [activeTab, setActiveTab] = useState<'rutines' | 'stats' | 'historial' | 'perfil' | 'gestio'>('rutines')
+  const [activeTab, setActiveTab] = useState<'rutines' | 'historial' | 'perfil' | 'gestio'>('rutines')
 
   const isAdult = profile?.role === 'pare' || profile?.role === 'mare'
 
@@ -216,6 +217,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
             effectiveProfileId={effectiveProfileId}
             isParent={isParent}
             pointsPerEuro={pointsPerEuro}
+            profilePointsMap={profilePointsMap}
             onRoutineClick={(r) => setSelectedRoutine(r)}
             onSkip={handleSkipRoutine}
           />
@@ -233,8 +235,8 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
             <span className="text-xl">🏆</span>
           </button>
         } />
-        <main className="flex-1 max-w-2xl mx-auto w-full px-4 pb-24">
-          {girlSelector}
+        <main className={`flex-1 mx-auto w-full px-4 pb-24 ${activeTab === 'gestio' ? 'max-w-4xl' : 'max-w-2xl'}`}>
+          {activeTab !== 'gestio' && girlSelector}
           <div className="flex bg-white rounded-2xl p-1 mt-4 mb-4 shadow-sm">
             {(['rutines', 'gestio'] as const).map((tab) => (
               <button
@@ -250,11 +252,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
           </div>
           {activeTab === 'rutines' && sharedRoutinesTab}
           {activeTab === 'gestio' && (
-            <div className="space-y-4">
-              <WeeklyStats profileId={effectiveProfileId} color={effectiveProfile.color} maxWeeklyPoints={maxWeeklyPoints} pointsPerEuro={pointsPerEuro} />
-              <PointsTable routines={routines} girls={girls} />
-              <FantasticAnimalsDisplay profileId={effectiveProfileId} currentLevel={effectiveProfile.level} color={effectiveProfile.color} showAll />
-            </div>
+            <AdminPanel profiles={allProfiles} routines={routines} />
           )}
         </main>
         {selectedRoutine && (
@@ -275,34 +273,22 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
         </button>
       } />
       <main className="flex-1 max-w-2xl mx-auto w-full px-4 pb-24">
+        {/* Tabs: Rutines | Historial | Perfil */}
         <div className="flex bg-white rounded-2xl p-1 mt-4 mb-4 shadow-sm">
-          {(['rutines', 'stats', 'historial', 'perfil'] as const).map((tab) => (
+          {(['rutines', 'historial', 'perfil'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all ${
+              className={`flex-1 py-2.5 text-sm font-black rounded-xl transition-all ${
                 activeTab === tab ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              {tab === 'rutines' ? '📋' : tab === 'stats' ? '📊' : tab === 'historial' ? '📅' : '👤'}
-              <span className="hidden sm:inline ml-1">
-                {tab === 'rutines' ? 'Rutines' : tab === 'stats' ? 'Stats' : tab === 'historial' ? 'Historial' : 'Perfil'}
-              </span>
+              {tab === 'rutines' ? '📋 Rutines' : tab === 'historial' ? '📅 Historial' : '👤 Perfil'}
             </button>
           ))}
         </div>
 
-        {activeTab === 'rutines'  && sharedRoutinesTab}
-
-        {activeTab === 'stats' && (
-          <div className="space-y-4">
-            <WeeklyEasyView profileId={effectiveProfileId} color={effectiveProfile.color} />
-            <WeeklyStats profileId={effectiveProfileId} color={effectiveProfile.color} maxWeeklyPoints={maxWeeklyPoints} pointsPerEuro={pointsPerEuro} />
-            <LevelProgress totalPoints={effectiveProfile.total_points} color={effectiveProfile.color} />
-            <RewardProgressWrapper profileId={effectiveProfileId} color={effectiveProfile.color} pointsPerEuro={pointsPerEuro} />
-            <BadgesDisplay profileId={effectiveProfileId} color={effectiveProfile.color} />
-          </div>
-        )}
+        {activeTab === 'rutines' && sharedRoutinesTab}
 
         {activeTab === 'historial' && (
           <div className="space-y-4">
@@ -318,9 +304,15 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
           </div>
         )}
 
+        {/* Perfil = avatar + estadístiques fusionades + col·lecció + animals + wallet */}
         {activeTab === 'perfil' && (
           <div className="space-y-4">
             <ProfileTab profile={effectiveProfile} isEditable={session?.profileId === effectiveProfileId} />
+            <WeeklyEasyView profileId={effectiveProfileId} color={effectiveProfile.color} />
+            <WeeklyStats profileId={effectiveProfileId} color={effectiveProfile.color} maxWeeklyPoints={maxWeeklyPoints} pointsPerEuro={pointsPerEuro} />
+            <LevelProgress totalPoints={effectiveProfile.total_points} color={effectiveProfile.color} />
+            <RewardProgressWrapper profileId={effectiveProfileId} color={effectiveProfile.color} pointsPerEuro={pointsPerEuro} />
+            <CollectionView profileId={effectiveProfileId} totalPoints={effectiveProfile.total_points} color={effectiveProfile.color} />
             <FantasticAnimalsDisplay profileId={effectiveProfileId} currentLevel={effectiveProfile.level} color={effectiveProfile.color} />
             <Wallet profileId={effectiveProfileId} color={effectiveProfile.color} name={effectiveProfile.name} isParent={false} />
           </div>
@@ -339,7 +331,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function CategorySection({
-  category, routines, logs, effectiveProfileId, isParent, pointsPerEuro, onRoutineClick, onSkip,
+  category, routines, logs, effectiveProfileId, isParent, pointsPerEuro, profilePointsMap, onRoutineClick, onSkip,
 }: {
   category: RoutineCategory
   routines: Routine[]
@@ -347,6 +339,7 @@ function CategorySection({
   effectiveProfileId: string
   isParent: boolean
   pointsPerEuro: number
+  profilePointsMap: Map<string, EffectivePoints>
   onRoutineClick: (r: Routine) => void
   onSkip: (r: Routine) => void
 }) {
@@ -363,11 +356,13 @@ function CategorySection({
       <div className="space-y-2">
         {routines.map((routine, i) => {
           const log = logs.find((l) => l.routine_id === routine.id && l.profile_id === effectiveProfileId)
+          const effectivePoints = getEffectivePoints(routine, profilePointsMap)
           return (
             <RoutineCard
               key={routine.id}
               routine={routine}
               log={log}
+              effectivePoints={effectivePoints}
               onClick={() => onRoutineClick(routine)}
               onSkip={log ? undefined : () => onSkip(routine)}
               index={i}
@@ -404,8 +399,6 @@ function ProfileTab({ profile, isEditable }: { profile: Profile; isEditable: boo
           </p>
         )}
       </div>
-      <LevelProgress totalPoints={profile.total_points} color={profile.color} />
-      <BadgesDisplay profileId={profile.id} color={profile.color} />
     </div>
   )
 }

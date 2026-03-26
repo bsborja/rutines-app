@@ -29,7 +29,6 @@ export default function RewardProgress({ weeklyPoints, color, pointsPerEuro }: R
           const percentage = Math.round(progress * 100)
           const unlocked = euros >= reward.eurosRequired
           const remaining = Math.max(0, reward.eurosRequired - euros).toFixed(2)
-          // Weeks needed if earning MAX_WEEKLY_EUROS per week
           const weeksNeeded = Math.ceil(reward.eurosRequired / MAX_WEEKLY_EUROS)
 
           return (
