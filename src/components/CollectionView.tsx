@@ -200,6 +200,7 @@ interface MonthBucket {
 
 function getISOWeekKey(dateStr: string): string {
   const d = new Date(dateStr)
+  // Monday-based week start
   const day = d.getDay() === 0 ? 6 : d.getDay() - 1
   const monday = new Date(d)
   monday.setDate(d.getDate() - day)
@@ -215,7 +216,7 @@ function getMonthKey(dateStr: string): string {
 // Component
 // ---------------------------------------------------------------------------
 
-export default function CollectionView({ profileId, totalPoints, color }: CollectionViewProps) {
+export default function CollectionView({ profileId, totalPoints: _totalPoints, color }: CollectionViewProps) {
   // --- Badges ---
   const [badges, setBadges] = useState<Badge[]>([])
 
@@ -327,6 +328,7 @@ export default function CollectionView({ profileId, totalPoints, color }: Collec
 
   function isMedalEarned(medalKey: string): boolean {
     if (medalKey === 'perfect_week') {
+      // Check if any ISO week had 100% good scores (at least 1 log)
       const weeks: WeekBucket = {}
       for (const log of logs) {
         const wk = getISOWeekKey(log.created_at)
@@ -338,6 +340,7 @@ export default function CollectionView({ profileId, totalPoints, color }: Collec
     }
 
     if (medalKey === 'consistent_month') {
+      // Check if any calendar month had >= 80% good
       const months: MonthBucket = {}
       for (const log of logs) {
         const mk = getMonthKey(log.created_at)
@@ -348,6 +351,7 @@ export default function CollectionView({ profileId, totalPoints, color }: Collec
       return Object.values(months).some((m) => m.total > 0 && m.good / m.total >= 0.8)
     }
 
+    // Regular routine medals — match by keyword in routine name
     const keyword = medalKey.toLowerCase()
     const matchingStats = routineStats.filter((rs) =>
       rs.routineName.toLowerCase().includes(keyword)
@@ -599,7 +603,7 @@ export default function CollectionView({ profileId, totalPoints, color }: Collec
                 )}
 
                 <p className="text-xs font-black text-center text-gray-800 leading-tight">
-                  {animal.isUnlocked ? animal.name : `???`}
+                  {animal.isUnlocked ? animal.name : '???'}
                 </p>
 
                 {animal.isUnlocked ? (
