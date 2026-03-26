@@ -8,7 +8,6 @@ import {
   BadgeType,
   Badge,
   MASTERY_MEDALS,
-  ANIMALS,
   ANIMAL_COLORS,
   OUTFIT_OPTIONS,
   GLASSES_OPTIONS,
@@ -17,7 +16,145 @@ import {
   AnimalOutfit,
   AnimalGlasses,
   AnimalAccessory,
+  FantasticAnimal,
 } from '@/types'
+
+// ---------------------------------------------------------------------------
+// Local animal catalog — mirrors DB seed, same as FantasticAnimalsDisplay
+// ---------------------------------------------------------------------------
+
+const ALL_ANIMALS: Omit<FantasticAnimal, 'id'>[] = [
+  { level_required: 2,  name: 'Drac de Foc',          emoji: '🐉', description: 'Petit però ferotge, primer company de viatge' },
+  { level_required: 4,  name: 'Sirena Lluminosa',      emoji: '🧜', description: 'Brillant com la lluna, viu entre les ones' },
+  { level_required: 6,  name: 'Fènix',                 emoji: '🔥', description: 'Reneix de les cendres, més fort cada vegada' },
+  { level_required: 8,  name: 'Unicorn Daurat',        emoji: '🦄', description: 'Màgic i pur, galopa entre els arcs de Sant Martí' },
+  { level_required: 10, name: 'Salamandra Voladora',   emoji: '🦎', description: 'Vola entre les flames sense cremar-se mai' },
+  { level_required: 12, name: 'Grifó',                 emoji: '🦅', description: 'Meitat àguila meitat lleó, guardià dels tresors' },
+  { level_required: 14, name: 'Kitsune',               emoji: '🦊', description: 'Guineu màgica de 9 cues, antiga i sàvia' },
+  { level_required: 16, name: 'Pegàs',                 emoji: '🐴', description: 'Cavall alat dels déus, vola fins als núvols' },
+  { level_required: 18, name: 'Gat de les Estrelles',  emoji: '🐱', description: 'Guardià del cel nocturn, salta entre constel·lacions' },
+  { level_required: 20, name: 'Lleó dels Núvols',      emoji: '🦁', description: 'El més poderós de tots, regna als cims del món' },
+]
+
+// ---------------------------------------------------------------------------
+// Color filter map — tints the animal emoji via CSS filter
+// ---------------------------------------------------------------------------
+
+const COLOR_FILTERS: Record<string, string> = {
+  original: 'none',
+  blau:    'sepia(1) saturate(8) hue-rotate(185deg) brightness(1.1)',
+  rosa:    'sepia(1) saturate(15) hue-rotate(290deg) brightness(1.0)',
+  verd:    'sepia(1) saturate(8) hue-rotate(75deg) brightness(1.1)',
+  daurat:  'sepia(1) saturate(6) hue-rotate(5deg) brightness(1.3)',
+  lila:    'sepia(1) saturate(8) hue-rotate(240deg) brightness(0.95)',
+  vermell: 'sepia(1) saturate(12) hue-rotate(310deg) brightness(1.0)',
+  taronja: 'sepia(1) saturate(8) hue-rotate(15deg) brightness(1.15)',
+}
+
+// ---------------------------------------------------------------------------
+// Emoji maps for accessories overlaid on the animal
+// ---------------------------------------------------------------------------
+
+const OUTFIT_EMOJI: Record<string, string> = {
+  samarreta_heroi: '🦸',
+  capa_reial: '🤴',
+  armadura: '⚔️',
+}
+
+const GLASSES_EMOJI: Record<string, string> = {
+  ulleres_sol: '🕶️',
+  ulleres_estrella: '⭐',
+  ulleres_cor: '❤️',
+}
+
+const ACCESSORY_EMOJI: Record<string, string> = {
+  gorra_festa: '🎉',
+  gorra_mag: '🎩',
+  gorra_pirata: '🏴‍☠️',
+}
+
+// ---------------------------------------------------------------------------
+// Merged animal type
+// ---------------------------------------------------------------------------
+
+type MergedAnimal = Omit<FantasticAnimal, 'id'> & { id: string; isUnlocked: boolean }
+
+// ---------------------------------------------------------------------------
+// AnimalPreview — overlaid accessories on the animal emoji
+// ---------------------------------------------------------------------------
+
+interface AnimalPreviewProps {
+  emoji: string
+  color: string
+  outfit: string
+  glasses: string
+  accessory: string
+  size?: 'sm' | 'lg'
+}
+
+function AnimalPreview({ emoji, color, outfit, glasses, accessory, size = 'lg' }: AnimalPreviewProps) {
+  const filter = COLOR_FILTERS[color] ?? 'none'
+  const isLg = size === 'lg'
+  const containerSize = isLg ? 96 : 56
+  const animalClass = isLg ? 'text-7xl' : 'text-4xl'
+  const glassClass = isLg ? 'text-2xl' : 'text-base'
+  const outfitClass = isLg ? 'text-3xl' : 'text-lg'
+  const accessoryClass = isLg ? 'text-3xl' : 'text-xl'
+  const hatTop = isLg ? -18 : -12
+  const outfitBottom = isLg ? -10 : -6
+
+  return (
+    <div
+      className="relative inline-flex items-center justify-center"
+      style={{ width: containerSize, height: containerSize }}
+    >
+      {/* Hat / accessory on top of the head — pirate flag goes to the side */}
+      {accessory === 'gorra_pirata' ? (
+        <span
+          className={`absolute ${isLg ? 'text-2xl' : 'text-lg'}`}
+          style={{ top: '35%', right: isLg ? -16 : -10, zIndex: 3 }}
+        >
+          🏴‍☠️
+        </span>
+      ) : accessory !== 'none' ? (
+        <span
+          className={`absolute ${accessoryClass}`}
+          style={{ top: hatTop, left: '50%', transform: 'translateX(-50%)', zIndex: 3 }}
+        >
+          {ACCESSORY_EMOJI[accessory]}
+        </span>
+      ) : null}
+
+      {/* Main animal emoji with CSS color filter */}
+      <span
+        className={`${animalClass} leading-none select-none`}
+        style={{ filter, zIndex: 1 }}
+      >
+        {emoji}
+      </span>
+
+      {/* Glasses over the eyes (~28% from top) */}
+      {glasses !== 'none' && (
+        <span
+          className={`absolute ${glassClass}`}
+          style={{ top: '28%', left: '50%', transform: 'translateX(-50%)', zIndex: 4 }}
+        >
+          {GLASSES_EMOJI[glasses]}
+        </span>
+      )}
+
+      {/* Outfit at the bottom */}
+      {outfit !== 'none' && (
+        <span
+          className={`absolute ${outfitClass}`}
+          style={{ bottom: outfitBottom, left: '50%', transform: 'translateX(-50%)', zIndex: 2 }}
+        >
+          {OUTFIT_EMOJI[outfit]}
+        </span>
+      )}
+    </div>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,7 +162,7 @@ import {
 
 interface CollectionViewProps {
   profileId: string
-  totalPoints: number
+  totalPoints: number  // kept for future use
   color: string
 }
 
@@ -79,7 +216,7 @@ function getMonthKey(dateStr: string): string {
 // Component
 // ---------------------------------------------------------------------------
 
-export default function CollectionView({ profileId, totalPoints, color }: CollectionViewProps) {
+export default function CollectionView({ profileId, totalPoints: _totalPoints, color }: CollectionViewProps) {
   // --- Badges ---
   const [badges, setBadges] = useState<Badge[]>([])
 
@@ -88,6 +225,8 @@ export default function CollectionView({ profileId, totalPoints, color }: Collec
   const [logs, setLogs] = useState<RoutineLogRow[]>([])
 
   // --- Animals ---
+  const [dbAnimals, setDbAnimals] = useState<FantasticAnimal[]>([])
+  const [unlockedIds, setUnlockedIds] = useState<Set<string>>(new Set())
   const [customizations, setCustomizations] = useState<AnimalCustomization[]>([])
   const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null)
   const [editCustom, setEditCustom] = useState<Omit<AnimalCustomization, 'id' | 'profile_id' | 'animal_id'>>({
@@ -149,7 +288,15 @@ export default function CollectionView({ profileId, totalPoints, color }: Collec
         setRoutineStats(Object.values(statsMap))
       }
 
-      // 3. Animal customizations (table may not exist yet — handle gracefully)
+      // 3. Animals from DB (fantastic_animals + profile_animals)
+      const [animalsRes, unlockedRes] = await Promise.all([
+        supabase.from('fantastic_animals').select('*').order('level_required'),
+        supabase.from('profile_animals').select('animal_id').eq('profile_id', profileId),
+      ])
+      setDbAnimals((animalsRes.data as FantasticAnimal[]) ?? [])
+      setUnlockedIds(new Set((unlockedRes.data ?? []).map((r: { animal_id: string }) => r.animal_id)))
+
+      // 4. Animal customizations (table may not exist yet — handle gracefully)
       try {
         const { data: customData } = await supabase
           .from('animal_customizations')
@@ -164,6 +311,16 @@ export default function CollectionView({ profileId, totalPoints, color }: Collec
 
     load()
   }, [profileId])
+
+  // ---------------------------------------------------------------------------
+  // Merge local catalog with DB data (same pattern as FantasticAnimalsDisplay)
+  // ---------------------------------------------------------------------------
+
+  const mergedAnimals: MergedAnimal[] = ALL_ANIMALS.map((a) => {
+    const dbMatch = dbAnimals.find((d) => d.level_required === a.level_required)
+    const isUnlocked = dbMatch ? unlockedIds.has(dbMatch.id) : false
+    return { ...a, id: dbMatch?.id ?? '', isUnlocked }
+  })
 
   // ---------------------------------------------------------------------------
   // Medal earned logic
@@ -210,7 +367,7 @@ export default function CollectionView({ profileId, totalPoints, color }: Collec
   // Animal customization modal helpers
   // ---------------------------------------------------------------------------
 
-  const selectedAnimal = ANIMALS.find((a) => a.id === selectedAnimalId) ?? null
+  const selectedAnimal = mergedAnimals.find((a) => a.id === selectedAnimalId) ?? null
   const existingCustom = customizations.find((c) => c.animal_id === selectedAnimalId)
 
   function openModal(animalId: string) {
@@ -241,14 +398,9 @@ export default function CollectionView({ profileId, totalPoints, color }: Collec
         accessory: editCustom.accessory,
       }
 
-      if (existingCustom) {
-        await supabase
-          .from('animal_customizations')
-          .update(payload)
-          .eq('id', existingCustom.id)
-      } else {
-        await supabase.from('animal_customizations').insert(payload)
-      }
+      await supabase
+        .from('animal_customizations')
+        .upsert(payload, { onConflict: 'profile_id,animal_id' })
 
       // Refresh customizations
       const { data } = await supabase
@@ -270,9 +422,6 @@ export default function CollectionView({ profileId, totalPoints, color }: Collec
 
   const earnedBadgeTypes = new Set(badges.map((b) => b.badge_type))
   const allBadgeTypes: BadgeType[] = ['streak_3', 'streak_7', 'streak_30']
-
-  const selectedColorHex =
-    ANIMAL_COLORS.find((c) => c.id === editCustom.color)?.hex ?? '#9B9B9B'
 
   // ---------------------------------------------------------------------------
   // Render
@@ -404,72 +553,67 @@ export default function CollectionView({ profileId, totalPoints, color }: Collec
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          {ANIMALS.map((animal, idx) => {
-            const unlocked = totalPoints >= animal.pointsRequired
+          {mergedAnimals.map((animal, idx) => {
             const custom = customizations.find((c) => c.animal_id === animal.id)
-            const bgColor = custom
-              ? (ANIMAL_COLORS.find((c) => c.id === custom.color)?.hex ?? '#9B9B9B')
-              : '#E5E7EB'
+            const animalColor = custom?.color ?? 'original'
+            const animalOutfit = custom?.outfit ?? 'none'
+            const animalGlasses = custom?.glasses ?? 'none'
+            const animalAccessory = custom?.accessory ?? 'none'
 
             return (
               <motion.div
-                key={animal.id}
+                key={animal.level_required}
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.04 }}
-                whileTap={unlocked ? { scale: 0.96 } : {}}
+                whileTap={animal.isUnlocked ? { scale: 0.96 } : {}}
                 className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 cursor-pointer select-none transition-all ${
-                  unlocked
+                  animal.isUnlocked
                     ? 'bg-white border-purple-200 shadow-md'
                     : 'bg-gray-50 border-gray-200 opacity-60'
                 }`}
                 onClick={() => {
-                  if (unlocked) openModal(animal.id)
+                  if (animal.isUnlocked && animal.id) openModal(animal.id)
                 }}
               >
-                {/* Animal emoji with optional blur for locked */}
+                {/* Animal preview — blurred and locked when not unlocked */}
                 <div
-                  className="relative flex items-center justify-center rounded-full w-16 h-16 text-4xl"
+                  className="relative flex items-center justify-center"
                   style={{
-                    backgroundColor: unlocked ? bgColor + '44' : '#E5E7EB',
-                    filter: unlocked ? 'none' : 'blur(3px)',
+                    filter: animal.isUnlocked ? 'none' : 'blur(3px)',
                   }}
                 >
-                  <span>{animal.emoji}</span>
-                  {/* Outfit overlay */}
-                  {unlocked && custom?.outfit && custom.outfit !== 'none' && (
-                    <span className="absolute -top-1 -right-1 text-lg">
-                      {OUTFIT_OPTIONS.find((o) => o.id === custom.outfit)?.emoji}
-                    </span>
-                  )}
-                  {/* Glasses overlay */}
-                  {unlocked && custom?.glasses && custom.glasses !== 'none' && (
-                    <span className="absolute bottom-0 right-0 text-base">
-                      {GLASSES_OPTIONS.find((g) => g.id === custom.glasses)?.emoji}
-                    </span>
-                  )}
-                  {/* Accessory overlay */}
-                  {unlocked && custom?.accessory && custom.accessory !== 'none' && (
-                    <span className="absolute -top-2 left-0 text-base">
-                      {ACCESSORY_OPTIONS.find((a) => a.id === custom.accessory)?.emoji}
-                    </span>
+                  {animal.isUnlocked && custom ? (
+                    <AnimalPreview
+                      emoji={animal.emoji}
+                      color={animalColor}
+                      outfit={animalOutfit}
+                      glasses={animalGlasses}
+                      accessory={animalAccessory}
+                      size="sm"
+                    />
+                  ) : (
+                    <span className="text-4xl leading-none select-none">{animal.emoji}</span>
                   )}
                 </div>
 
+                {/* Lock badge for locked animals */}
+                {!animal.isUnlocked && (
+                  <span className="text-lg">🔒</span>
+                )}
+
                 <p className="text-xs font-black text-center text-gray-800 leading-tight">
-                  {animal.name}
+                  {animal.isUnlocked ? animal.name : '???'}
                 </p>
 
-                {unlocked ? (
+                {animal.isUnlocked ? (
                   <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
                     ✓ Desbloquejat
                   </span>
                 ) : (
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-gray-500 font-bold">
-                      🔒 {animal.pointsRequired - totalPoints} pts
-                    </span>
-                  </div>
+                  <span className="text-xs text-gray-500 font-bold">
+                    Nivell {animal.level_required}
+                  </span>
                 )}
               </motion.div>
             )
@@ -513,32 +657,16 @@ export default function CollectionView({ profileId, totalPoints, color }: Collec
                   Personalitza {selectedAnimal.name}
                 </h3>
 
-                {/* Animal preview */}
-                <div className="flex justify-center">
-                  <div
-                    className="relative flex items-center justify-center rounded-full w-28 h-28"
-                    style={{ backgroundColor: selectedColorHex + '44' }}
-                  >
-                    <span className="text-6xl">{selectedAnimal.emoji}</span>
-                    {/* Outfit overlay */}
-                    {editCustom.outfit !== 'none' && (
-                      <span className="absolute -top-2 -right-2 text-3xl">
-                        {OUTFIT_OPTIONS.find((o) => o.id === editCustom.outfit)?.emoji}
-                      </span>
-                    )}
-                    {/* Glasses overlay */}
-                    {editCustom.glasses !== 'none' && (
-                      <span className="absolute bottom-1 right-0 text-2xl">
-                        {GLASSES_OPTIONS.find((g) => g.id === editCustom.glasses)?.emoji}
-                      </span>
-                    )}
-                    {/* Accessory overlay */}
-                    {editCustom.accessory !== 'none' && (
-                      <span className="absolute -top-3 left-0 text-2xl">
-                        {ACCESSORY_OPTIONS.find((a) => a.id === editCustom.accessory)?.emoji}
-                      </span>
-                    )}
-                  </div>
+                {/* Animal preview — large, with overlaid accessories and color filter */}
+                <div className="flex justify-center py-4">
+                  <AnimalPreview
+                    emoji={selectedAnimal.emoji}
+                    color={editCustom.color}
+                    outfit={editCustom.outfit}
+                    glasses={editCustom.glasses}
+                    accessory={editCustom.accessory}
+                    size="lg"
+                  />
                 </div>
 
                 {/* Description */}
@@ -546,7 +674,7 @@ export default function CollectionView({ profileId, totalPoints, color }: Collec
 
                 {/* COLOR PICKER */}
                 <div>
-                  <p className="text-sm font-black text-gray-700 mb-2">Color de fons</p>
+                  <p className="text-sm font-black text-gray-700 mb-2">Color</p>
                   <div className="flex gap-2 flex-wrap">
                     {ANIMAL_COLORS.map((c) => (
                       <button
