@@ -24,11 +24,12 @@ import FantasticAnimalsDisplay from '@/components/FantasticAnimalsDisplay'
 import AvatarUpload from '@/components/AvatarUpload'
 import CollectionView from '@/components/CollectionView'
 import AdminPanel from '@/components/AdminPanel'
+import RoutineManager from '@/components/RoutineManager'
 import { supabase } from '@/lib/supabase'
 import {
   updateProfilePoints, checkAndAwardBadges, getWeeklyPoints,
   getEffectivePoints, calcMaxWeeklyPoints, calcPointsPerEuro,
-  checkAndUnlockAnimals,
+  checkAndUnlockAnimals, getWeekendStart, getLevelFromPoints,
 } from '@/lib/points'
 import { updateWalletEuros } from '@/lib/wallet'
 import Wallet from '@/components/Wallet'
@@ -62,6 +63,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
   const [newAnimals, setNewAnimals] = useState<FantasticAnimal[]>([])
   const [animalIdx, setAnimalIdx] = useState(0)
   const [activeTab, setActiveTab] = useState<'rutines' | 'historial' | 'perfil' | 'gestio'>('rutines')
+  const [showRoutineManager, setShowRoutineManager] = useState(false)
 
   const isAdult = profile?.role === 'pare' || profile?.role === 'mare'
 
@@ -127,13 +129,28 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
     resumeAudio()
     const targetId = isParent ? targetProfileId : profileId
 
+    // For cap_de_setmana routines use full Sat-Sun window; otherwise today only
+    let checkStart: Date
+    let checkEnd: Date
+    if (selectedRoutine.is_weekend_only && isWeekend) {
+      checkStart = getWeekendStart()
+      checkEnd = new Date(checkStart)
+      checkEnd.setDate(checkEnd.getDate() + 2)
+    } else {
+      checkStart = new Date()
+      checkStart.setHours(0, 0, 0, 0)
+      checkEnd = new Date()
+      checkEnd.setHours(24, 0, 0, 0)
+    }
+
+
     const { data: existingLogs } = await supabase
       .from('routine_logs')
       .select('id, points_awarded')
       .eq('profile_id', targetId)
       .eq('routine_id', selectedRoutine.id)
-      .gte('created_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
-      .lt('created_at', new Date(new Date().setHours(24, 0, 0, 0)).toISOString())
+      .gte('created_at', checkStart.toISOString())
+      .lt('created_at', checkEnd.toISOString())
       .limit(1)
 
     const existing = existingLogs?.[0]
@@ -252,7 +269,16 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
           </div>
           {activeTab === 'rutines' && sharedRoutinesTab}
           {activeTab === 'gestio' && (
-            <AdminPanel profiles={allProfiles} routines={routines} />
+            <div className="space-y-4">
+              <ManualPointsAdjustment profile={effectiveProfile} girls={girls} />
+              <AdminPanel profiles={allProfiles} routines={routines} />
+              <button
+                onClick={() => setShowRoutineManager(true)}
+                className="w-full py-3 rounded-2xl border-2 border-dashed border-gray-300 text-sm font-bold text-gray-400 hover:border-gray-500 hover:text-gray-600 transition-all"
+              >
+                🌟 Suggeriments de noves rutines
+              </button>
+            </div>
           )}
         </main>
         {selectedRoutine && (
@@ -324,6 +350,9 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
       )}
       <CelebrationOverlay visible={celebration.visible} message={celebration.message} subMessage={celebration.sub} onComplete={() => setCelebration((p) => ({ ...p, visible: false }))} />
       <AnimalUnlockOverlay animals={newAnimals} idx={animalIdx} onNext={() => { if (animalIdx < newAnimals.length - 1) setAnimalIdx(animalIdx + 1); else setNewAnimals([]) }} />
+      {showRoutineManager && (
+        <RoutineManager onClose={() => setShowRoutineManager(false)} />
+      )}
     </div>
   )
 }
@@ -378,6 +407,91 @@ function RewardProgressWrapper({ profileId, color, pointsPerEuro }: { profileId:
   const [weeklyPoints, setWeeklyPoints] = useState(0)
   useEffect(() => { getWeeklyPoints(profileId).then(setWeeklyPoints) }, [profileId])
   return <RewardProgress weeklyPoints={weeklyPoints} color={color} pointsPerEuro={pointsPerEuro} />
+}
+
+function ManualPointsAdjustment({ profile, girls }: { profile: Profile; girls: Profile[] }) {
+  const [adjustment, setAdjustment] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+
+  function showMsg(msg: string) {
+    setMessage(msg)
+    setTimeout(() => setMessage(null), 2500)
+  }
+
+  async function handleSave() {
+    const delta = parseInt(adjustment)
+    if (isNaN(delta) || delta === 0) return
+    setSaving(true)
+    await updateProfilePoints(profile.id, delta)
+    setAdjustment('')
+    showMsg(`${delta > 0 ? '+' : ''}${delta} punts guardats ✓`)
+    setSaving(false)
+  }
+
+  async function handleSyncAll() {
+    setSyncing(true)
+    for (const girl of girls) {
+      const { data: logs } = await supabase
+        .from('routine_logs')
+        .select('points_awarded')
+        .eq('profile_id', girl.id)
+      if (logs) {
+        const total = Math.max(0, logs.reduce((s: number, l: { points_awarded: number }) => s + l.points_awarded, 0))
+        const level = getLevelFromPoints(total)
+        await supabase.from('profiles').update({ total_points: total, level }).eq('id', girl.id)
+      }
+    }
+    showMsg('Tots els punts recalculats ✓')
+    setSyncing(false)
+  }
+
+  return (
+    <div className="bg-white rounded-2xl p-4 shadow-sm">
+      <h3 className="text-base font-black text-gray-800 mb-1">Ajust manual de punts</h3>
+      <p className="text-xs text-gray-400 mb-4">
+        Total actual de <span className="font-bold">{profile.name}</span>:{' '}
+        <span className="font-black text-gray-700">{profile.total_points} pts</span>
+      </p>
+
+      <div className="flex gap-2 mb-3">
+        <input
+          type="number"
+          value={adjustment}
+          onChange={(e) => setAdjustment(e.target.value)}
+          placeholder="+10 o -5"
+          className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-2 font-bold text-gray-800 focus:outline-none focus:border-gray-400 text-center"
+        />
+        <button
+          onClick={handleSave}
+          disabled={saving || !adjustment || adjustment === '0'}
+          className="px-5 py-2 rounded-xl font-black text-white text-sm transition-all disabled:opacity-40"
+          style={{ backgroundColor: '#3498DB' }}
+        >
+          {saving ? '...' : '💾 Guardar'}
+        </button>
+      </div>
+
+      <button
+        onClick={handleSyncAll}
+        disabled={syncing}
+        className="w-full py-2.5 rounded-xl border-2 border-gray-200 text-sm font-bold text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-all disabled:opacity-40"
+      >
+        {syncing ? 'Recalculant...' : '🔄 Sincronitzar tots els usuaris'}
+      </button>
+
+      {message && (
+        <motion.p
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center text-sm font-bold text-green-600 mt-3"
+        >
+          {message}
+        </motion.p>
+      )}
+    </div>
+  )
 }
 
 function ProfileTab({ profile, isEditable }: { profile: Profile; isEditable: boolean }) {

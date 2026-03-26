@@ -28,6 +28,7 @@ export interface Routine {
   base_points_bad: number
   is_weekend_only: boolean
   active_weekdays: number   // bitmask: bit0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat (127=all)
+  is_active?: boolean
   emoji: string
   order_index: number
 }

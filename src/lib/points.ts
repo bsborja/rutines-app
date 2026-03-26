@@ -334,6 +334,35 @@ export async function verifyPin(pin: string, hash: string): Promise<boolean> {
   return inputHash === hash
 }
 
+// Get the start of the current weekend (Saturday 00:00 local time)
+export function getWeekendStart(date: Date = new Date()): Date {
+  const d = new Date(date)
+  const day = d.getDay() // 0=Sun, 6=Sat
+  if (day === 6) {
+    d.setHours(0, 0, 0, 0)
+  } else if (day === 0) {
+    d.setDate(d.getDate() - 1)
+    d.setHours(0, 0, 0, 0)
+  }
+  return d
+}
+
+// Get logs for the full Sat-Sun weekend window (for cap_de_setmana routines)
+export async function getWeekendLogs(profileId: string): Promise<RoutineLog[]> {
+  const saturday = getWeekendStart()
+  const monday = new Date(saturday)
+  monday.setDate(monday.getDate() + 2)
+
+  const { data } = await supabase
+    .from('routine_logs')
+    .select('*, routine:routines(*)')
+    .eq('profile_id', profileId)
+    .gte('created_at', saturday.toISOString())
+    .lt('created_at', monday.toISOString())
+
+  return (data as RoutineLog[]) || []
+}
+
 // Get today's logs for a profile
 export async function getTodayLogs(profileId: string): Promise<RoutineLog[]> {
   const today = new Date()

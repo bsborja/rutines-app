@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Routine, RoutineLog, RoutineCategory, EffectivePoints } from '@/types'
-import { getTodayLogs, getProfileRoutinePoints } from '@/lib/points'
+import { getTodayLogs, getWeekendLogs, getProfileRoutinePoints } from '@/lib/points'
 
 export function useRoutines() {
   const [routines, setRoutines] = useState<Routine[]>([])
@@ -16,7 +16,7 @@ export function useRoutines() {
         .select('*')
         .order('order_index')
 
-      if (data) setRoutines(data as Routine[])
+      if (data) setRoutines((data as Routine[]).filter((r) => r.is_active !== false))
       setLoading(false)
     }
 
@@ -62,7 +62,11 @@ export function useTodayLogs(profileId: string | null) {
     let ignore = false
 
     async function fetchLogs() {
-      const data = await getTodayLogs(profileId!)
+      const dayOfWeek = new Date().getDay()
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+      const data = isWeekend
+        ? await getWeekendLogs(profileId!)
+        : await getTodayLogs(profileId!)
       if (!ignore) {
         setLogs(data)
         setLoading(false)
