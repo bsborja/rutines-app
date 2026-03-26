@@ -16,6 +16,7 @@ const ROUTINE_TEMPLATES: Omit<Routine, 'id'>[] = [
     base_points_ok: 5,
     base_points_bad: -7,
     is_weekend_only: false,
+    active_weekdays: 62, // Mon-Fri (bits 1-5)
     is_active: true,
     order_index: 65,
   },
@@ -28,6 +29,7 @@ const ROUTINE_TEMPLATES: Omit<Routine, 'id'>[] = [
     base_points_ok: 2,
     base_points_bad: -4,
     is_weekend_only: false,
+    active_weekdays: 62, // Mon-Fri
     is_active: true,
     order_index: 35,
   },
@@ -40,6 +42,7 @@ const ROUTINE_TEMPLATES: Omit<Routine, 'id'>[] = [
     base_points_ok: 2,
     base_points_bad: -4,
     is_weekend_only: false,
+    active_weekdays: 62, // Mon-Fri
     is_active: true,
     order_index: 75,
   },
@@ -52,6 +55,7 @@ const ROUTINE_TEMPLATES: Omit<Routine, 'id'>[] = [
     base_points_ok: 3,
     base_points_bad: -5,
     is_weekend_only: false,
+    active_weekdays: 62, // Mon-Fri
     is_active: true,
     order_index: 95,
   },
@@ -64,6 +68,7 @@ const ROUTINE_TEMPLATES: Omit<Routine, 'id'>[] = [
     base_points_ok: 3,
     base_points_bad: -5,
     is_weekend_only: false,
+    active_weekdays: 62, // Mon-Fri
     is_active: true,
     order_index: 85,
   },
@@ -76,6 +81,7 @@ const ROUTINE_TEMPLATES: Omit<Routine, 'id'>[] = [
     base_points_ok: 4,
     base_points_bad: -6,
     is_weekend_only: true,
+    active_weekdays: 65, // Sat (bit 6) + Sun (bit 0)
     is_active: true,
     order_index: 125,
   },
@@ -113,6 +119,7 @@ export default function RoutineManager({ onClose }: RoutineManagerProps) {
     if (!name?.trim() || !emoji || !category) return
 
     setSaving(true)
+    const isWeekend = category === 'cap_de_setmana'
     const payload = {
       name: name.trim(),
       description: (description || '').trim(),
@@ -121,7 +128,8 @@ export default function RoutineManager({ onClose }: RoutineManagerProps) {
       base_points_good: base_points_good ?? 10,
       base_points_ok: base_points_ok ?? 3,
       base_points_bad: base_points_bad ?? -5,
-      is_weekend_only: category === 'cap_de_setmana',
+      is_weekend_only: isWeekend,
+      active_weekdays: editing.active_weekdays ?? (isWeekend ? 65 : 62),
       is_active: editing.is_active !== false,
       order_index: editing.order_index ?? 999,
     }

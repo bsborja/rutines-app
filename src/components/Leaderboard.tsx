@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
-import { Profile, LEVEL_EMOJIS } from '@/types'
+import { Profile, LEVEL_EMOJIS, LEVEL_NAMES } from '@/types'
 import { getWeeklyPoints, getMonthlyPoints, getLevelFromPoints } from '@/lib/points'
 
 interface GirlStats {
@@ -12,15 +12,11 @@ interface GirlStats {
   monthlyPoints: number
 }
 
-interface LeaderboardProps {
-  mode?: 'weekly' | 'monthly'
-}
-
 const MEDALS = ['🥇', '🥈', '🥉']
 
-export default function Leaderboard({ mode = 'weekly' }: LeaderboardProps) {
+export default function Leaderboard() {
   const [stats, setStats] = useState<GirlStats[]>([])
-  const [currentMode, setCurrentMode] = useState(mode)
+  const [currentMode, setCurrentMode] = useState<'weekly' | 'monthly'>('weekly')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -52,11 +48,6 @@ export default function Leaderboard({ mode = 'weekly' }: LeaderboardProps) {
     currentMode === 'weekly'
       ? b.weeklyPoints - a.weeklyPoints
       : b.monthlyPoints - a.monthlyPoints
-  )
-
-  const maxPoints = Math.max(
-    ...sorted.map((s) => (currentMode === 'weekly' ? s.weeklyPoints : s.monthlyPoints)),
-    1
   )
 
   if (loading) {
@@ -93,8 +84,9 @@ export default function Leaderboard({ mode = 'weekly' }: LeaderboardProps) {
       <div className="px-4 pb-6 space-y-3">
         {sorted.map((item, rank) => {
           const points = currentMode === 'weekly' ? item.weeklyPoints : item.monthlyPoints
-          const barWidth = maxPoints > 0 ? (points / maxPoints) * 100 : 0
           const level = getLevelFromPoints(item.profile.total_points)
+          const levelEmoji = LEVEL_EMOJIS[level]
+          const levelName = LEVEL_NAMES[level]
 
           return (
             <motion.div
@@ -102,19 +94,9 @@ export default function Leaderboard({ mode = 'weekly' }: LeaderboardProps) {
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: rank * 0.1 }}
-              className="relative"
             >
-              {/* Background bar */}
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${barWidth}%` }}
-                transition={{ duration: 0.8, ease: 'easeOut', delay: 0.2 + rank * 0.1 }}
-                className="absolute inset-y-0 left-0 rounded-xl opacity-15"
-                style={{ backgroundColor: item.profile.color }}
-              />
-
               <div
-                className="relative rounded-xl border-2 p-3 flex items-center gap-3"
+                className="rounded-xl border-2 p-3 flex items-center gap-3"
                 style={{ borderColor: `${item.profile.color}40` }}
               >
                 {/* Rank */}
@@ -139,23 +121,28 @@ export default function Leaderboard({ mode = 'weekly' }: LeaderboardProps) {
                   </div>
                 )}
 
-                {/* Name and level */}
+                {/* Name + level */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-black text-gray-800 text-lg">{item.profile.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {LEVEL_EMOJIS[level]} {item.profile.level > 0 ? item.profile.total_points : 0} pts totals
-                  </p>
+                  <p className="font-black text-gray-800 text-lg leading-tight">{item.profile.name}</p>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span className="text-sm">{levelEmoji}</span>
+                    <span className="text-xs font-bold text-gray-500">
+                      Niv.{level} {levelName}
+                    </span>
+                  </div>
                 </div>
 
-                {/* Points percentage - no exact number shown */}
+                {/* Points (exact, no percentage) */}
                 <div className="text-right flex-shrink-0">
                   <p
-                    className="text-2xl font-black"
+                    className="text-2xl font-black leading-tight"
                     style={{ color: item.profile.color }}
                   >
-                    {maxPoints > 0 ? Math.round((points / maxPoints) * 100) : 0}%
+                    {points}
                   </p>
-                  <p className="text-xs text-gray-400">de la millor</p>
+                  <p className="text-xs text-gray-400">
+                    {currentMode === 'weekly' ? 'pts setmana' : 'pts mes'}
+                  </p>
                 </div>
               </div>
             </motion.div>

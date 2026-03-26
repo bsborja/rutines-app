@@ -1,4 +1,15 @@
-import { BehaviorScore, Profile, RoutineLog, LEVEL_POINTS, POINTS_PER_EURO } from '@/types'
+import {
+  BehaviorScore,
+  RoutineLog,
+  LEVEL_POINTS,
+  MAX_LEVEL,
+  MAX_WEEKLY_EUROS,
+  Routine,
+  EffectivePoints,
+  RoutinePointsOverride,
+  ROUTINE_WEEKLY_DAYS,
+  FantasticAnimal,
+} from '@/types'
 import { supabase } from './supabase'
 
 // Calculate points for a behavior
@@ -10,12 +21,10 @@ export function calculatePoints(
   loggedByParent: boolean = false,
 ): number {
   switch (score) {
-    case 'good':
-      return basePointsGood
-    case 'ok':
-      return basePointsOk
+    case 'good': return basePointsGood
+    case 'ok':   return basePointsOk
+    case 'skip': return 0
     case 'bad':
-      // Parents register 50% more negative impact
       return loggedByParent ? Math.round(basePointsBad * 1.5) : basePointsBad
   }
 }
@@ -76,12 +85,69 @@ export async function getMonthlyPoints(profileId: string): Promise<number> {
   return Math.max(0, total)
 }
 
-// Convert points to euros
-export function pointsToEuros(points: number): number {
-  return Math.round((points / POINTS_PER_EURO) * 100) / 100
+// Get per-profile routine point overrides from DB
+// Returns a map of routineId → EffectivePoints
+export async function getProfileRoutinePoints(
+  profileId: string,
+): Promise<Map<string, EffectivePoints>> {
+  const { data } = await supabase
+    .from('routine_points')
+    .select('*')
+    .eq('profile_id', profileId)
+
+  const map = new Map<string, EffectivePoints>()
+  if (data) {
+    for (const row of data as RoutinePointsOverride[]) {
+      map.set(row.routine_id, {
+        good: row.points_good,
+        ok: row.points_ok,
+        bad: row.points_bad,
+      })
+    }
+  }
+  return map
 }
 
-// Get level from total points
+// Get effective points for a routine (override > base)
+export function getEffectivePoints(
+  routine: Routine,
+  profilePoints: Map<string, EffectivePoints>,
+): EffectivePoints {
+  return (
+    profilePoints.get(routine.id) ?? {
+      good: routine.base_points_good,
+      ok: routine.base_points_ok,
+      bad: routine.base_points_bad,
+    }
+  )
+}
+
+// Calculate theoretical max weekly points for a profile
+// (all routines done "Bé" every day they appear)
+export function calcMaxWeeklyPoints(
+  routines: Routine[],
+  profilePoints: Map<string, EffectivePoints>,
+): number {
+  return routines.reduce((sum, r) => {
+    const pts = getEffectivePoints(r, profilePoints)
+    const days = ROUTINE_WEEKLY_DAYS[r.category]
+    return sum + pts.good * days
+  }, 0)
+}
+
+// Points-per-euro ratio for a profile this week
+export function calcPointsPerEuro(maxWeeklyPoints: number): number {
+  if (maxWeeklyPoints <= 0) return 216 // fallback
+  return maxWeeklyPoints / MAX_WEEKLY_EUROS
+}
+
+// Convert points to euros using dynamic ratio
+export function pointsToEuros(points: number, pointsPerEuro?: number): number {
+  const ratio = pointsPerEuro ?? 216 // default fallback
+  return Math.round((points / ratio) * 100) / 100
+}
+
+// Get level (1–20) from total points
 export function getLevelFromPoints(totalPoints: number): number {
   let level = 1
   for (let i = LEVEL_POINTS.length - 1; i >= 0; i--) {
@@ -90,13 +156,13 @@ export function getLevelFromPoints(totalPoints: number): number {
       break
     }
   }
-  return Math.min(level, 5)
+  return Math.min(level, MAX_LEVEL)
 }
 
-// Get progress to next level (0-1)
+// Get progress to next level (0–1)
 export function getLevelProgress(totalPoints: number): number {
   const level = getLevelFromPoints(totalPoints)
-  if (level >= 5) return 1
+  if (level >= MAX_LEVEL) return 1
 
   const currentThreshold = LEVEL_POINTS[level - 1]
   const nextThreshold = LEVEL_POINTS[level]
@@ -211,6 +277,47 @@ export async function updateProfilePoints(profileId: string, pointsDelta: number
     .from('profiles')
     .update({ total_points: newTotal, level: newLevel })
     .eq('id', profileId)
+}
+
+// Check and unlock fantastic animals based on current level
+// Returns newly unlocked animals (for celebration display)
+export async function checkAndUnlockAnimals(profileId: string): Promise<FantasticAnimal[]> {
+  // Get current profile level
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('level')
+    .eq('id', profileId)
+    .single()
+
+  if (!profile) return []
+
+  // Get all animals up to current level
+  const { data: allAnimals } = await supabase
+    .from('fantastic_animals')
+    .select('*')
+    .lte('level_required', profile.level)
+    .order('level_required', { ascending: true })
+
+  if (!allAnimals || allAnimals.length === 0) return []
+
+  // Get already unlocked animal IDs
+  const { data: unlocked } = await supabase
+    .from('profile_animals')
+    .select('animal_id')
+    .eq('profile_id', profileId)
+
+  const unlockedIds = new Set((unlocked ?? []).map((u: { animal_id: string }) => u.animal_id))
+
+  // Find newly unlockable animals
+  const toUnlock = (allAnimals as FantasticAnimal[]).filter((a) => !unlockedIds.has(a.id))
+  if (toUnlock.length === 0) return []
+
+  // Insert new unlocks
+  await supabase.from('profile_animals').insert(
+    toUnlock.map((a) => ({ profile_id: profileId, animal_id: a.id })),
+  )
+
+  return toUnlock
 }
 
 // Hash PIN with SHA-256
