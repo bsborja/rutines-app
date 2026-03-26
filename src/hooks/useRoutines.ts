@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Routine, RoutineLog, RoutineCategory } from '@/types'
-import { getTodayLogs } from '@/lib/points'
+import { Routine, RoutineLog, RoutineCategory, EffectivePoints } from '@/types'
+import { getTodayLogs, getProfileRoutinePoints } from '@/lib/points'
 
 export function useRoutines() {
   const [routines, setRoutines] = useState<Routine[]>([])
@@ -97,4 +97,39 @@ export function useTodayLogs(profileId: string | null) {
   const loggedRoutineIds = new Set(logs.map((l) => l.routine_id))
 
   return { logs, loading, loggedRoutineIds }
+}
+
+// Per-profile routine point overrides
+// Returns a Map<routineId, EffectivePoints> and a reload function
+export function useProfileRoutinePoints(profileId: string | null) {
+  const [points, setPoints] = useState<Map<string, EffectivePoints>>(new Map())
+
+  const load = useCallback(async () => {
+    if (!profileId) return
+    const map = await getProfileRoutinePoints(profileId)
+    setPoints(map)
+  }, [profileId])
+
+  useEffect(() => {
+    load()
+
+    if (!profileId) return
+    const channel = supabase
+      .channel(`routine_points:${profileId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'routine_points',
+          filter: `profile_id=eq.${profileId}`,
+        },
+        () => { load() },
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [profileId, load])
+
+  return { points, reload: load }
 }
