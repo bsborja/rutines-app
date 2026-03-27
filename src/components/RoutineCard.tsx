@@ -1,8 +1,8 @@
 'use client'
 
-import { useRef, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { Routine, RoutineLog, EffectivePoints, CATEGORY_COLORS } from '@/types'
+import { useLongPress } from '@/hooks/useLongPress'
 
 interface RoutineCardProps {
   routine: Routine
@@ -11,6 +11,9 @@ interface RoutineCardProps {
   onSkip?: () => void
   index?: number
   effectivePoints?: EffectivePoints
+  batchMode?: boolean
+  isSelected?: boolean
+  onToggleSelect?: () => void
 }
 
 const scoreConfig = {
@@ -20,8 +23,6 @@ const scoreConfig = {
   skip: { emoji: '⏭️', label: 'Saltada',  color: '#9CA3AF', bg: '#F9FAFB' },
 }
 
-const LONG_PRESS_MS = 600
-
 export default function RoutineCard({
   routine,
   log,
@@ -29,168 +30,96 @@ export default function RoutineCard({
   onSkip,
   index = 0,
   effectivePoints,
+  batchMode = false,
+  isSelected = false,
+  onToggleSelect,
 }: RoutineCardProps) {
   const categoryColor = CATEGORY_COLORS[routine.category]
-  const isDone  = !!log
-  const isSkip  = log?.score === 'skip'
-  const score   = log?.score ? scoreConfig[log.score] : null
+  const isDone = !!log
+  const isSkip = log?.score === 'skip'
+  const score  = log?.score ? scoreConfig[log.score] : null
 
-  const [showSkipConfirm, setShowSkipConfirm] = useState(false)
-  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const didLongPress = useRef(false)
-
-  function startPress() {
-    didLongPress.current = false
-    pressTimer.current = setTimeout(() => {
-      didLongPress.current = true
-      setShowSkipConfirm(true)
-    }, LONG_PRESS_MS)
-  }
-
-  function endPress() {
-    if (pressTimer.current) clearTimeout(pressTimer.current)
-  }
+  const longPress = useLongPress({
+    onLongPress: () => { if (!batchMode && onSkip) onSkip() },
+    delay: 800,
+    movementThreshold: 10,
+    disabled: batchMode || !onSkip,
+  })
 
   function handleClick() {
-    if (didLongPress.current) return // long-press handled separately
-    if (showSkipConfirm) return
-    onClick()
+    if (longPress.firedRef.current) { longPress.firedRef.current = false; return }
+    if (batchMode) { onToggleSelect?.() } else { onClick() }
   }
 
-  function confirmSkip() {
-    setShowSkipConfirm(false)
-    onSkip?.()
-  }
+  const borderColor = isSelected ? '#3B82F6' : isDone ? (score?.color || '#E5E7EB') : '#E5E7EB'
+  const bgColor     = isSelected ? '#EFF6FF' : isDone ? (score?.bg || 'white') : 'white'
 
   return (
-    <>
-      <motion.button
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: index * 0.06, duration: 0.3 }}
-        whileTap={{ scale: didLongPress.current ? 1 : 0.97 }}
-        onClick={handleClick}
-        onMouseDown={startPress}
-        onMouseUp={endPress}
-        onMouseLeave={endPress}
-        onTouchStart={startPress}
-        onTouchEnd={endPress}
-        onContextMenu={(e) => e.preventDefault()}
-        className={`
-          w-full text-left rounded-2xl shadow-sm overflow-hidden transition-all p-4 select-none
-          ${isDone ? 'opacity-80' : 'hover:shadow-md'}
-          bg-white border-2
-        `}
-        style={{
-          borderColor: isDone ? (score?.color || '#E5E7EB') : '#E5E7EB',
-          backgroundColor: isDone ? (score?.bg || 'white') : 'white',
-        }}
-      >
-        <div className="flex items-center gap-3">
-          {/* Category color bar */}
-          <div
-            className="w-1 self-stretch rounded-full flex-shrink-0"
-            style={{ backgroundColor: isSkip ? '#D1D5DB' : categoryColor }}
-          />
-
-          {/* Emoji */}
-          <span className="text-3xl" style={{ opacity: isSkip ? 0.5 : 1 }}>{routine.emoji}</span>
-
-          {/* Text */}
-          <div className="flex-1 min-w-0">
-            <p className={`font-black leading-tight text-base ${isSkip ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
-              {routine.name}
-            </p>
-            {!isSkip && (
-              <p className="text-gray-500 text-xs mt-0.5 truncate">{routine.description}</p>
-            )}
-            {isSkip && (
-              <p className="text-gray-400 text-xs mt-0.5 italic">Saltada avui</p>
-            )}
-          </div>
-
-          {/* Status */}
-          <div className="flex-shrink-0">
-            {isDone ? (
-              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="flex flex-col items-center">
-                <span className="text-2xl">{score?.emoji}</span>
-                {!isSkip && (
-                  <span className="text-xs font-bold" style={{ color: score?.color }}>
-                    {log?.points_awarded !== undefined && log.points_awarded > 0
-                      ? `+${log.points_awarded}`
-                      : log?.points_awarded}
-                    &nbsp;pts
-                  </span>
-                )}
-              </motion.div>
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            )}
-          </div>
+    <motion.button
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.06, duration: 0.3 }}
+      onClick={handleClick}
+      {...longPress.handlers}
+      className={`relative w-full text-left rounded-2xl shadow-sm overflow-hidden transition-all p-4 select-none ${isDone && !isSelected ? 'opacity-80' : ''} ${!batchMode && !isDone ? 'active:scale-97 hover:shadow-md' : ''} bg-white border-2`}
+      style={{ borderColor, backgroundColor: bgColor }}
+    >
+      {longPress.isLongPressing && (
+        <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-orange-50/70 z-10 pointer-events-none">
+          <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
+            <circle cx="28" cy="28" r="23" fill="none" stroke="#FED7AA" strokeWidth="4" />
+            <circle cx="28" cy="28" r="23" fill="none" stroke="#F97316" strokeWidth="4" strokeLinecap="round"
+              strokeDasharray={`${2 * Math.PI * 23}`}
+              strokeDashoffset={`${2 * Math.PI * 23 * (1 - longPress.progress)}`}
+              style={{ transition: 'stroke-dashoffset 16ms linear' }} />
+          </svg>
+          <span className="absolute text-lg">⏭️</span>
         </div>
+      )}
 
-        {/* Points info (not done, not skip) */}
-        {!isDone && (
-          <div className="flex gap-3 mt-2 ml-7">
-            <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full font-semibold">
-              Bé: +{effectivePoints?.good ?? routine.base_points_good} pts
-            </span>
-            <span className="text-xs text-orange-500 bg-orange-50 px-2 py-0.5 rounded-full font-semibold">
-              Regular: +{effectivePoints?.ok ?? routine.base_points_ok} pts
-            </span>
+      <div className="flex items-center gap-3">
+        {batchMode && (
+          <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300 bg-white'}`}>
+            {isSelected && (
+              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
           </div>
         )}
-
-        {/* Long-press hint (not done) */}
-        {!isDone && onSkip && (
-          <p className="text-[10px] text-gray-300 mt-1 ml-7">Mantén premut per saltar</p>
-        )}
-      </motion.button>
-
-      {/* Skip confirmation overlay */}
-      <AnimatePresence>
-        {showSkipConfirm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-6"
-            onClick={() => setShowSkipConfirm(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.85, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.85, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-3xl shadow-2xl p-7 w-full max-w-xs text-center"
-            >
-              <p className="text-5xl mb-3">⏭️</p>
-              <h3 className="text-xl font-black text-gray-800 mb-1">Saltar {routine.name}?</h3>
-              <p className="text-sm text-gray-500 mb-6">
-                No sumarà ni restarà punts. No comptarà com a dia incomplet.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowSkipConfirm(false)}
-                  className="flex-1 py-3 rounded-2xl border-2 border-gray-200 text-gray-600 font-bold"
-                >
-                  Cancel·lar
-                </button>
-                <button
-                  onClick={confirmSkip}
-                  className="flex-1 py-3 rounded-2xl bg-gray-700 text-white font-black"
-                >
-                  Saltar
-                </button>
-              </div>
+        <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: isSkip ? '#D1D5DB' : categoryColor }} />
+        <span className="text-3xl" style={{ opacity: isSkip ? 0.5 : 1 }}>{routine.emoji}</span>
+        <div className="flex-1 min-w-0">
+          <p className={`font-black leading-tight text-base ${isSkip ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{routine.name}</p>
+          {!isSkip && <p className="text-gray-500 text-xs mt-0.5 truncate">{routine.description}</p>}
+          {isSkip  && <p className="text-gray-400 text-xs mt-0.5 italic">Saltada avui</p>}
+        </div>
+        <div className="flex-shrink-0">
+          {isDone ? (
+            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="flex flex-col items-center">
+              <span className="text-2xl">{score?.emoji}</span>
+              {!isSkip && (
+                <span className="text-xs font-bold" style={{ color: score?.color }}>
+                  {log?.points_awarded !== undefined && log.points_awarded > 0 ? `+${log.points_awarded}` : log?.points_awarded}&nbsp;pts
+                </span>
+              )}
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {!isDone && !batchMode && (
+        <div className="flex gap-3 mt-2 ml-7">
+          <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full font-semibold">Bé: +{effectivePoints?.good ?? routine.base_points_good} pts</span>
+          <span className="text-xs text-orange-500 bg-orange-50 px-2 py-0.5 rounded-full font-semibold">Regular: +{effectivePoints?.ok ?? routine.base_points_ok} pts</span>
+        </div>
+      )}
+    </motion.button>
   )
 }

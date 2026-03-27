@@ -139,6 +139,18 @@ export function playBadgeSound(): void {
   }
 }
 
+// Short whoosh for skipping a routine
+export function playSkipSound(): void {
+  try {
+    const ctx = getAudioContext()
+    const now = ctx.currentTime
+    playNote(330, 0.15, now, 0.15, 'triangle')
+    playNote(262, 0.2, now + 0.1, 0.1, 'triangle')
+  } catch {
+    // silent fallback
+  }
+}
+
 // Resume AudioContext if suspended (required after user gesture)
 export function resumeAudio(): void {
   if (audioContext && audioContext.state === 'suspended') {
