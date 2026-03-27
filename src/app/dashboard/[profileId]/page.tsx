@@ -33,7 +33,8 @@ import {
 } from '@/lib/points'
 import { updateWalletEuros } from '@/lib/wallet'
 import Wallet from '@/components/Wallet'
-import { resumeAudio } from '@/lib/sound'
+import BatchActionBar from '@/components/BatchActionBar'
+import { resumeAudio, playOkSound, playBadSound } from '@/lib/sound'
 import { BehaviorScore } from '@/types'
 
 const CATEGORIES: RoutineCategory[] = ['mati', 'tarda', 'nit', 'cap_de_setmana']
@@ -64,6 +65,10 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
   const [animalIdx, setAnimalIdx] = useState(0)
   const [activeTab, setActiveTab] = useState<'rutines' | 'historial' | 'perfil' | 'gestio'>('rutines')
   const [showRoutineManager, setShowRoutineManager] = useState(false)
+
+  // Batch mode
+  const [batchMode, setBatchMode] = useState(false)
+  const [selectedRoutineIds, setSelectedRoutineIds] = useState<Set<string>>(new Set())
 
   const isAdult = profile?.role === 'pare' || profile?.role === 'mare'
 
@@ -124,69 +129,144 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
     })
   }
 
-  async function handleBehaviorSelect(score: BehaviorScore, points: number) {
+  function handleBehaviorSelect(score: BehaviorScore, points: number) {
     if (!selectedRoutine || !session) return
     resumeAudio()
+
+    const routine = selectedRoutine
     const targetId = isParent ? targetProfileId : profileId
 
-    // For cap_de_setmana routines use full Sat-Sun window; otherwise today only
-    let checkStart: Date
-    let checkEnd: Date
-    if (selectedRoutine.is_weekend_only && isWeekend) {
-      checkStart = getWeekendStart()
-      checkEnd = new Date(checkStart)
-      checkEnd.setDate(checkEnd.getDate() + 2)
-    } else {
-      checkStart = new Date()
-      checkStart.setHours(0, 0, 0, 0)
-      checkEnd = new Date()
-      checkEnd.setHours(24, 0, 0, 0)
+    // Close modal immediately — zero perceived lag
+    setSelectedRoutine(null)
+
+    // Show celebration immediately for 'good'
+    if (score === 'good') {
+      const name = allProfiles.find((p) => p.id === targetId)?.name || 'Nena'
+      setCelebration({ visible: true, message: `🎉 Molt bé, ${name}!`, sub: `+${points} punts!` })
     }
 
+    // DB work in background
+    void (async () => {
+      let checkStart: Date
+      let checkEnd: Date
+      if (routine.is_weekend_only && isWeekend) {
+        checkStart = getWeekendStart()
+        checkEnd = new Date(checkStart)
+        checkEnd.setDate(checkEnd.getDate() + 2)
+      } else {
+        checkStart = new Date(); checkStart.setHours(0, 0, 0, 0)
+        checkEnd   = new Date(); checkEnd.setHours(24, 0, 0, 0)
+      }
 
-    const { data: existingLogs } = await supabase
-      .from('routine_logs')
-      .select('id, points_awarded')
-      .eq('profile_id', targetId)
-      .eq('routine_id', selectedRoutine.id)
-      .gte('created_at', checkStart.toISOString())
-      .lt('created_at', checkEnd.toISOString())
-      .limit(1)
+      const { data: existingLogs } = await supabase
+        .from('routine_logs').select('id, points_awarded')
+        .eq('profile_id', targetId).eq('routine_id', routine.id)
+        .gte('created_at', checkStart.toISOString()).lt('created_at', checkEnd.toISOString()).limit(1)
 
-    const existing = existingLogs?.[0]
-    if (existing) {
-      await updateProfilePoints(targetId, -existing.points_awarded)
-      await updateWalletEuros(targetId, -existing.points_awarded / pointsPerEuro)
-      await supabase.from('routine_logs').delete().eq('id', existing.id)
-    }
+      const existing = existingLogs?.[0]
+      if (existing) {
+        await Promise.all([
+          updateProfilePoints(targetId, -existing.points_awarded),
+          updateWalletEuros(targetId, -existing.points_awarded / pointsPerEuro),
+          supabase.from('routine_logs').delete().eq('id', existing.id),
+        ])
+      }
 
-    const { error } = await supabase.from('routine_logs').insert({
-      profile_id: targetId,
-      routine_id: selectedRoutine.id,
-      score,
-      points_awarded: points,
-      logged_by: session.profileId,
+      await Promise.all([
+        supabase.from('routine_logs').insert({ profile_id: targetId, routine_id: routine.id, score, points_awarded: points, logged_by: session.profileId }),
+        updateProfilePoints(targetId, points),
+        updateWalletEuros(targetId, points / pointsPerEuro),
+      ])
+
+      if (score === 'good') {
+        const [newBadges, unlocked] = await Promise.all([checkAndAwardBadges(targetId), checkAndUnlockAnimals(targetId)])
+        if (unlocked.length > 0) { setNewAnimals(unlocked); setAnimalIdx(0) }
+        setCelebration((prev) => ({
+          ...prev,
+          sub: `+${points} punts!${newBadges.length > 0 ? ' 🏅 Nova insígnia!' : ''}${unlocked.length > 0 ? ' 🐉 Animal nou!' : ''}`,
+        }))
+      }
+    })()
+  }
+
+  function toggleRoutineSelection(routineId: string) {
+    setSelectedRoutineIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(routineId)) next.delete(routineId); else next.add(routineId)
+      return next
     })
+  }
 
-    if (error) { console.error(error); setSelectedRoutine(null); return }
+  function calcBatchPoints(score: BehaviorScore) {
+    return [...selectedRoutineIds].reduce((sum, id) => {
+      const r = routines.find((x) => x.id === id)
+      if (!r) return sum
+      const pts = getEffectivePoints(r, profilePointsMap)
+      if (score === 'good') return sum + pts.good
+      if (score === 'ok')   return sum + pts.ok
+      return sum + (isParent ? Math.round(pts.bad * 1.5) : pts.bad)
+    }, 0)
+  }
 
-    await updateProfilePoints(targetId, points)
-    await updateWalletEuros(targetId, points / pointsPerEuro)
+  function handleBatchRate(score: BehaviorScore) {
+    if (selectedRoutineIds.size === 0 || !session) return
+    resumeAudio()
+    if (score === 'ok')  playOkSound()
+    if (score === 'bad') playBadSound()
+
+    const targetId = isParent ? targetProfileId : profileId
+    const selectedRoutines = routines.filter((r) => selectedRoutineIds.has(r.id))
+    const totalPoints = calcBatchPoints(score)
+    const count = selectedRoutines.length
+
+    setBatchMode(false)
+    setSelectedRoutineIds(new Set())
 
     if (score === 'good') {
-      const [newBadges, unlocked] = await Promise.all([
-        checkAndAwardBadges(targetId),
-        checkAndUnlockAnimals(targetId),
-      ])
       const name = allProfiles.find((p) => p.id === targetId)?.name || 'Nena'
-      if (unlocked.length > 0) { setNewAnimals(unlocked); setAnimalIdx(0) }
-      setCelebration({
-        visible: true,
-        message: `🎉 Molt bé, ${name}!`,
-        sub: `+${points} punts!${newBadges.length > 0 ? ' 🏅 Nova insígnia!' : ''}${unlocked.length > 0 ? ' 🐉 Animal nou!' : ''}`,
-      })
+      setCelebration({ visible: true, message: `🎉 Molt bé, ${name}!`, sub: `${count} rutines! +${totalPoints} punts!` })
     }
-    setSelectedRoutine(null)
+
+    void (async () => {
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+      const todayEnd   = new Date(); todayEnd.setHours(24, 0, 0, 0)
+      const routineIds = selectedRoutines.map((r) => r.id)
+
+      const { data: existingLogs } = await supabase
+        .from('routine_logs').select('id, points_awarded')
+        .eq('profile_id', targetId).in('routine_id', routineIds)
+        .gte('created_at', todayStart.toISOString()).lt('created_at', todayEnd.toISOString())
+
+      if (existingLogs && existingLogs.length > 0) {
+        const totalReverted = existingLogs.reduce((s, l) => s + l.points_awarded, 0)
+        await Promise.all([
+          updateProfilePoints(targetId, -totalReverted),
+          updateWalletEuros(targetId, -totalReverted / pointsPerEuro),
+          supabase.from('routine_logs').delete().in('id', existingLogs.map((l) => l.id)),
+        ])
+      }
+
+      const logsToInsert = selectedRoutines.map((r) => {
+        const pts = getEffectivePoints(r, profilePointsMap)
+        const points = score === 'good' ? pts.good : score === 'ok' ? pts.ok : (isParent ? Math.round(pts.bad * 1.5) : pts.bad)
+        return { profile_id: targetId, routine_id: r.id, score, points_awarded: points, logged_by: session.profileId }
+      })
+
+      await Promise.all([
+        supabase.from('routine_logs').insert(logsToInsert),
+        updateProfilePoints(targetId, totalPoints),
+        updateWalletEuros(targetId, totalPoints / pointsPerEuro),
+      ])
+
+      if (score === 'good') {
+        const [newBadges, unlocked] = await Promise.all([checkAndAwardBadges(targetId), checkAndUnlockAnimals(targetId)])
+        if (unlocked.length > 0) { setNewAnimals(unlocked); setAnimalIdx(0) }
+        setCelebration((prev) => ({
+          ...prev,
+          sub: `${count} rutines! +${totalPoints} punts!${newBadges.length > 0 ? ' 🏅' : ''}${unlocked.length > 0 ? ' 🐉' : ''}`,
+        }))
+      }
+    })()
   }
 
   const effectiveProfileId = effectiveTargetId
@@ -220,8 +300,27 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
     </div>
   )
 
+  const batchGoodTotal = calcBatchPoints('good')
+  const batchOkTotal   = calcBatchPoints('ok')
+  const batchBadTotal  = calcBatchPoints('bad')
+
   const sharedRoutinesTab = (
     <div className="space-y-6 mt-2">
+      {/* Batch mode toggle */}
+      <div className="flex justify-end -mb-3">
+        {batchMode ? (
+          <button onClick={() => { setBatchMode(false); setSelectedRoutineIds(new Set()) }}
+            className="text-sm font-bold text-red-500 py-1 px-3 rounded-xl hover:bg-red-50 transition-colors">
+            ✕ Cancel·lar selecció
+          </button>
+        ) : (
+          <button onClick={() => setBatchMode(true)}
+            className="text-sm font-bold text-blue-500 py-1 px-3 rounded-xl hover:bg-blue-50 transition-colors">
+            ☑ Seleccionar varies
+          </button>
+        )}
+      </div>
+
       {CATEGORIES.map((category) => {
         const catRoutines = getRoutinesByCategory(category)
         if (catRoutines.length === 0) return null
@@ -237,6 +336,9 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
             profilePointsMap={profilePointsMap}
             onRoutineClick={(r) => setSelectedRoutine(r)}
             onSkip={handleSkipRoutine}
+            batchMode={batchMode}
+            selectedRoutineIds={selectedRoutineIds}
+            onToggleRoutineSelect={toggleRoutineSelection}
           />
         )
       })}
@@ -284,6 +386,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
         {selectedRoutine && (
           <BehaviorSelector routine={selectedRoutine} effectivePoints={getEffectivePoints(selectedRoutine, profilePointsMap)} loggedByParent onSelect={handleBehaviorSelect} onCancel={() => setSelectedRoutine(null)} />
         )}
+        <BatchActionBar count={selectedRoutineIds.size} totalGoodPoints={batchGoodTotal} totalOkPoints={batchOkTotal} totalBadPoints={batchBadTotal} onRate={handleBatchRate} onCancel={() => { setBatchMode(false); setSelectedRoutineIds(new Set()) }} />
         <CelebrationOverlay visible={celebration.visible} message={celebration.message} subMessage={celebration.sub} onComplete={() => setCelebration((p) => ({ ...p, visible: false }))} />
         <AnimalUnlockOverlay animals={newAnimals} idx={animalIdx} onNext={() => { if (animalIdx < newAnimals.length - 1) setAnimalIdx(animalIdx + 1); else setNewAnimals([]) }} />
       </div>
@@ -348,6 +451,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
       {selectedRoutine && (
         <BehaviorSelector routine={selectedRoutine} effectivePoints={getEffectivePoints(selectedRoutine, profilePointsMap)} loggedByParent={false} onSelect={handleBehaviorSelect} onCancel={() => setSelectedRoutine(null)} />
       )}
+      <BatchActionBar count={selectedRoutineIds.size} totalGoodPoints={batchGoodTotal} totalOkPoints={batchOkTotal} totalBadPoints={batchBadTotal} onRate={handleBatchRate} onCancel={() => { setBatchMode(false); setSelectedRoutineIds(new Set()) }} />
       <CelebrationOverlay visible={celebration.visible} message={celebration.message} subMessage={celebration.sub} onComplete={() => setCelebration((p) => ({ ...p, visible: false }))} />
       <AnimalUnlockOverlay animals={newAnimals} idx={animalIdx} onNext={() => { if (animalIdx < newAnimals.length - 1) setAnimalIdx(animalIdx + 1); else setNewAnimals([]) }} />
       {showRoutineManager && (
@@ -360,7 +464,8 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function CategorySection({
-  category, routines, logs, effectiveProfileId, isParent, pointsPerEuro, profilePointsMap, onRoutineClick, onSkip,
+  category, routines, logs, effectiveProfileId, isParent, pointsPerEuro, profilePointsMap,
+  onRoutineClick, onSkip, batchMode, selectedRoutineIds, onToggleRoutineSelect,
 }: {
   category: RoutineCategory
   routines: Routine[]
@@ -371,6 +476,9 @@ function CategorySection({
   profilePointsMap: Map<string, EffectivePoints>
   onRoutineClick: (r: Routine) => void
   onSkip: (r: Routine) => void
+  batchMode: boolean
+  selectedRoutineIds: Set<string>
+  onToggleRoutineSelect: (id: string) => void
 }) {
   const doneCount = routines.filter((r) =>
     logs.some((l) => l.routine_id === r.id && l.profile_id === effectiveProfileId && l.score !== 'skip')
@@ -395,6 +503,9 @@ function CategorySection({
               onClick={() => onRoutineClick(routine)}
               onSkip={log ? undefined : () => onSkip(routine)}
               index={i}
+              batchMode={batchMode}
+              isSelected={selectedRoutineIds.has(routine.id)}
+              onToggleSelect={() => onToggleRoutineSelect(routine.id)}
             />
           )
         })}
