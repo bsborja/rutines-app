@@ -16,7 +16,7 @@ export function useRoutines() {
         .select('*')
         .order('order_index')
 
-      if (data) setRoutines((data as Routine[]).filter((r) => r.is_active !== false))
+      if (data) setRoutines((data as Routine[]).filter((r) => r.is_active !== false && !r.archived_at))
       setLoading(false)
     }
 

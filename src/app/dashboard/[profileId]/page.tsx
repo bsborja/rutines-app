@@ -24,7 +24,6 @@ import FantasticAnimalsDisplay from '@/components/FantasticAnimalsDisplay'
 import AvatarUpload from '@/components/AvatarUpload'
 import CollectionView from '@/components/CollectionView'
 import AdminPanel from '@/components/AdminPanel'
-import RoutineManager from '@/components/RoutineManager'
 import { supabase } from '@/lib/supabase'
 import {
   updateProfilePoints, checkAndAwardBadges, getWeeklyPoints,
@@ -63,8 +62,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
   })
   const [newAnimals, setNewAnimals] = useState<FantasticAnimal[]>([])
   const [animalIdx, setAnimalIdx] = useState(0)
-  const [activeTab, setActiveTab] = useState<'rutines' | 'historial' | 'perfil' | 'gestio'>('rutines')
-  const [showRoutineManager, setShowRoutineManager] = useState(false)
+  const [activeTab, setActiveTab] = useState<'rutines' | 'historial' | 'perfil' | 'configuracio'>('rutines')
 
   // Batch mode
   const [batchMode, setBatchMode] = useState(false)
@@ -354,10 +352,10 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
             <span className="text-xl">🏆</span>
           </button>
         } />
-        <main className={`flex-1 mx-auto w-full px-4 pb-24 ${activeTab === 'gestio' ? 'max-w-4xl' : 'max-w-2xl'}`}>
-          {activeTab !== 'gestio' && girlSelector}
+        <main className={`flex-1 mx-auto w-full px-4 pb-24 ${activeTab === 'configuracio' ? 'max-w-4xl' : 'max-w-2xl'}`}>
+          {activeTab !== 'configuracio' && girlSelector}
           <div className="flex bg-white rounded-2xl p-1 mt-4 mb-4 shadow-sm">
-            {(['rutines', 'gestio'] as const).map((tab) => (
+            {(['rutines', 'configuracio'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -365,21 +363,15 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
                   activeTab === tab ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
-                {tab === 'rutines' ? '📋 Rutines' : '⚙️ Gestió'}
+                {tab === 'rutines' ? '📋 Rutines' : '⚙️ Configuració'}
               </button>
             ))}
           </div>
           {activeTab === 'rutines' && sharedRoutinesTab}
-          {activeTab === 'gestio' && (
+          {activeTab === 'configuracio' && (
             <div className="space-y-4">
               <ManualPointsAdjustment profile={effectiveProfile} girls={girls} />
               <AdminPanel profiles={allProfiles} routines={routines} />
-              <button
-                onClick={() => setShowRoutineManager(true)}
-                className="w-full py-3 rounded-2xl border-2 border-dashed border-gray-300 text-sm font-bold text-gray-400 hover:border-gray-500 hover:text-gray-600 transition-all"
-              >
-                🌟 Suggeriments de noves rutines
-              </button>
             </div>
           )}
         </main>
@@ -454,9 +446,6 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
       <BatchActionBar count={selectedRoutineIds.size} totalGoodPoints={batchGoodTotal} totalOkPoints={batchOkTotal} totalBadPoints={batchBadTotal} onRate={handleBatchRate} onCancel={() => { setBatchMode(false); setSelectedRoutineIds(new Set()) }} />
       <CelebrationOverlay visible={celebration.visible} message={celebration.message} subMessage={celebration.sub} onComplete={() => setCelebration((p) => ({ ...p, visible: false }))} />
       <AnimalUnlockOverlay animals={newAnimals} idx={animalIdx} onNext={() => { if (animalIdx < newAnimals.length - 1) setAnimalIdx(animalIdx + 1); else setNewAnimals([]) }} />
-      {showRoutineManager && (
-        <RoutineManager onClose={() => setShowRoutineManager(false)} />
-      )}
     </div>
   )
 }
