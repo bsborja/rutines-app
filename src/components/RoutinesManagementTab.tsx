@@ -602,7 +602,9 @@ function RoutineEditModal({
   function set(field: keyof EditingRoutine, value: unknown) {
     const updated = { ...routine, [field]: value }
     if (field === 'category') {
-      updated.is_weekend_only = value === 'cap_de_setmana'
+      const isWknd = value === 'cap_de_setmana'
+      updated.is_weekend_only = isWknd
+      updated.active_weekdays = isWknd ? 65 : 62
     }
     onChange(updated)
   }
