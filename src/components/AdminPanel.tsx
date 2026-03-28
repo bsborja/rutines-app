@@ -8,10 +8,9 @@ import {
   RoutinePointsOverride,
   POINTS_PER_EURO,
   REWARD_TYPES,
-  DAY_LABELS,
-  DayOfWeek,
 } from '@/types'
 import { supabase } from '@/lib/supabase'
+import RoutinesManagementTab from './RoutinesManagementTab'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,26 +22,21 @@ interface AdminPanelProps {
 // key: `${profileId}__${routineId}`
 type PointsMap = Record<string, { good: number; ok: number; bad: number }>
 
-// key: `${routineId}__${day}`
-type ScheduleMap = Record<string, boolean>
-
 // key: rewardId
 type RewardCostsMap = Record<string, number>
 
 // key: profileId
 type WeeklyEurosMap = Record<string, number>
 
-type TabId = 'punts' | 'recalcul' | 'euros' | 'recompenses' | 'horaris'
+type TabId = 'rutines_mgmt' | 'punts' | 'recalcul' | 'euros' | 'recompenses'
 
 const TABS: { id: TabId; label: string; emoji: string }[] = [
+  { id: 'rutines_mgmt', label: 'Rutines', emoji: '📝' },
   { id: 'punts', label: 'Punts', emoji: '⚡' },
   { id: 'recalcul', label: 'Recàlcul', emoji: '🤖' },
   { id: 'euros', label: 'Euros/setmana', emoji: '💶' },
   { id: 'recompenses', label: 'Recompenses', emoji: '🎁' },
-  { id: 'horaris', label: 'Horaris', emoji: '📅' },
 ]
-
-const DAY_ORDER: DayOfWeek[] = [1, 2, 3, 4, 5, 6, 0]
 
 // ─── Small reusable UI pieces ─────────────────────────────────────────────────
 
@@ -101,7 +95,7 @@ export default function AdminPanel({ profiles, routines }: AdminPanelProps) {
   const girls = profiles.filter((p) => p.role === 'nena')
   const sortedRoutines = [...routines].sort((a, b) => a.order_index - b.order_index)
 
-  const [activeTab, setActiveTab] = useState<TabId>('punts')
+  const [activeTab, setActiveTab] = useState<TabId>('rutines_mgmt')
   const [toast, setToast] = useState<string | null>(null)
 
   function showToast(msg: string) {
@@ -135,6 +129,9 @@ export default function AdminPanel({ profiles, routines }: AdminPanelProps) {
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.15 }}
         >
+          {activeTab === 'rutines_mgmt' && (
+            <RoutinesManagementTab girls={girls} onToast={showToast} />
+          )}
           {activeTab === 'punts' && (
             <PointsEditorTab
               girls={girls}
@@ -154,13 +151,6 @@ export default function AdminPanel({ profiles, routines }: AdminPanelProps) {
           )}
           {activeTab === 'recompenses' && (
             <RewardsTab onToast={showToast} />
-          )}
-          {activeTab === 'horaris' && (
-            <ScheduleTab
-              girls={girls}
-              routines={sortedRoutines}
-              onToast={showToast}
-            />
           )}
         </motion.div>
       </AnimatePresence>
@@ -831,230 +821,6 @@ function RewardsTab({ onToast }: { onToast: (msg: string) => void }) {
               style={{ background: 'linear-gradient(135deg, #9B59B6, #6C63FF)' }}
             >
               {saving ? '⏳ Desant...' : '💾 Guardar canvis de recompenses'}
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
-
-// ─── Tab 5: Routine schedule ──────────────────────────────────────────────────
-
-function ScheduleTab({
-  girls,
-  routines,
-  onToast,
-}: {
-  girls: Profile[]
-  routines: Routine[]
-  onToast: (msg: string) => void
-}) {
-  const [selectedGirlId, setSelectedGirlId] = useState<string>(girls[0]?.id ?? '')
-  const [schedule, setSchedule] = useState<ScheduleMap>({})
-  const [dirty, setDirty] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [loading, setLoading] = useState(true)
-
-  const loadSchedule = useCallback(
-    async (girlId: string) => {
-      setLoading(true)
-      // Build defaults
-      const defaults: ScheduleMap = {}
-      for (const routine of routines) {
-        for (const day of DAY_ORDER) {
-          const k = `${routine.id}__${day}`
-          // is_weekend_only → enabled Sat(6)+Sun(0), disabled Mon-Fri
-          if (routine.is_weekend_only) {
-            defaults[k] = day === 0 || day === 6
-          } else {
-            defaults[k] = day >= 1 && day <= 5
-          }
-        }
-      }
-
-      const { data } = await supabase
-        .from('routine_schedule')
-        .select('routine_id, day_of_week, enabled')
-        .eq('profile_id', girlId)
-
-      const result = { ...defaults }
-      if (data) {
-        for (const row of data as { routine_id: string; day_of_week: number; enabled: boolean }[]) {
-          result[`${row.routine_id}__${row.day_of_week}`] = row.enabled
-        }
-      }
-
-      setSchedule(result)
-      setDirty(false)
-      setLoading(false)
-    },
-    [routines]
-  )
-
-  useEffect(() => {
-    if (selectedGirlId) {
-      loadSchedule(selectedGirlId)
-    }
-  }, [selectedGirlId, loadSchedule])
-
-  function toggle(routineId: string, day: DayOfWeek) {
-    const k = `${routineId}__${day}`
-    setSchedule((prev) => ({ ...prev, [k]: !prev[k] }))
-    setDirty(true)
-  }
-
-  async function saveSchedule() {
-    setSaving(true)
-    const rows = []
-    for (const routine of routines) {
-      for (const day of DAY_ORDER) {
-        const k = `${routine.id}__${day}`
-        rows.push({
-          profile_id: selectedGirlId,
-          routine_id: routine.id,
-          day_of_week: day,
-          enabled: schedule[k] ?? false,
-        })
-      }
-    }
-
-    const { error } = await supabase
-      .from('routine_schedule')
-      .upsert(rows, { onConflict: 'profile_id,routine_id,day_of_week' })
-
-    setSaving(false)
-    if (error) {
-      onToast('❌ Error en desar l\'horari')
-    } else {
-      setDirty(false)
-      onToast('✅ Horari desat correctament!')
-    }
-  }
-
-  const selectedGirl = girls.find((g) => g.id === selectedGirlId)
-
-  return (
-    <div className="space-y-3">
-      {/* Girl selector */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {girls.map((girl) => (
-          <button
-            key={girl.id}
-            onClick={() => setSelectedGirlId(girl.id)}
-            className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-sm transition-all border-2`}
-            style={
-              selectedGirlId === girl.id
-                ? { backgroundColor: girl.color, borderColor: girl.color, color: 'white' }
-                : { borderColor: '#e5e7eb', color: '#6b7280', backgroundColor: 'white' }
-            }
-          >
-            <div
-              className="w-5 h-5 rounded-full flex items-center justify-center text-white font-black text-xs flex-shrink-0"
-              style={{ backgroundColor: selectedGirlId === girl.id ? 'rgba(255,255,255,0.3)' : girl.color }}
-            >
-              {girl.name[0]}
-            </div>
-            {girl.name}
-          </button>
-        ))}
-      </div>
-
-      <SectionCard>
-        <h2 className="font-black text-gray-800 text-base mb-1">
-          📅 Horari de Rutines
-          {selectedGirl && (
-            <span className="ml-2 font-bold text-sm" style={{ color: selectedGirl.color }}>
-              — {selectedGirl.name}
-            </span>
-          )}
-        </h2>
-        <p className="text-xs text-gray-500 mb-4">
-          Marca quins dies de la setmana s'activa cada rutina.
-        </p>
-
-        {loading ? (
-          <p className="text-center text-gray-400 py-6 font-bold">Carregant horari...</p>
-        ) : (
-          <div className="overflow-x-auto -mx-1">
-            <table className="w-full text-xs border-separate border-spacing-y-1">
-              <thead>
-                <tr>
-                  <th className="text-left font-black text-gray-500 pb-1 pl-1 w-24">Rutina</th>
-                  {DAY_ORDER.map((day) => (
-                    <th
-                      key={day}
-                      className="text-center font-black text-gray-400 pb-1 px-1 w-8"
-                    >
-                      {DAY_LABELS[day]}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {routines.map((routine) => (
-                  <tr key={routine.id}>
-                    <td className="pl-1 py-1">
-                      <span className="font-bold text-gray-700 leading-tight block">
-                        {routine.emoji}{' '}
-                        <span className="text-gray-600">
-                          {routine.name.length > 10
-                            ? routine.name.slice(0, 10) + '…'
-                            : routine.name}
-                        </span>
-                      </span>
-                    </td>
-                    {DAY_ORDER.map((day) => {
-                      const k = `${routine.id}__${day}`
-                      const enabled = schedule[k] ?? false
-                      return (
-                        <td key={day} className="px-1 py-1 text-center">
-                          <button
-                            onClick={() => toggle(routine.id, day)}
-                            className="w-6 h-6 rounded-md transition-all active:scale-90 border-2"
-                            style={
-                              enabled
-                                ? {
-                                    backgroundColor: selectedGirl?.color ?? '#6C63FF',
-                                    borderColor: selectedGirl?.color ?? '#6C63FF',
-                                  }
-                                : { backgroundColor: 'white', borderColor: '#d1d5db' }
-                            }
-                            title={enabled ? 'Desactivar' : 'Activar'}
-                          >
-                            {enabled && (
-                              <span className="text-white text-xs font-black leading-none">✓</span>
-                            )}
-                          </button>
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </SectionCard>
-
-      <AnimatePresence>
-        {dirty && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-          >
-            <button
-              onClick={saveSchedule}
-              disabled={saving}
-              className="w-full py-4 rounded-2xl font-black text-white text-base shadow-lg transition-all active:scale-95 disabled:opacity-60"
-              style={{
-                background: selectedGirl
-                  ? `linear-gradient(135deg, ${selectedGirl.color}, ${selectedGirl.color}99)`
-                  : 'linear-gradient(135deg, #6C63FF, #3498DB)',
-              }}
-            >
-              {saving ? '⏳ Desant...' : `💾 Desar horari de ${selectedGirl?.name ?? ''}`}
             </button>
           </motion.div>
         )}
