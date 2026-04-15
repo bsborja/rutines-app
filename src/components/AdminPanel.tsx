@@ -10,6 +10,7 @@ import {
   REWARD_TYPES,
 } from '@/types'
 import { supabase } from '@/lib/supabase'
+import { updateProfilePoints, getLevelFromPoints } from '@/lib/points'
 import RoutinesManagementTab from './RoutinesManagementTab'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ type RewardCostsMap = Record<string, number>
 // key: profileId
 type WeeklyEurosMap = Record<string, number>
 
-type TabId = 'rutines_mgmt' | 'punts' | 'recalcul' | 'euros' | 'recompenses'
+type TabId = 'rutines_mgmt' | 'punts' | 'recalcul' | 'euros' | 'recompenses' | 'manual'
 
 const TABS: { id: TabId; label: string; emoji: string }[] = [
   { id: 'rutines_mgmt', label: 'Rutines', emoji: '📝' },
@@ -36,6 +37,7 @@ const TABS: { id: TabId; label: string; emoji: string }[] = [
   { id: 'recalcul', label: 'Recàlcul', emoji: '🤖' },
   { id: 'euros', label: 'Euros/setmana', emoji: '💶' },
   { id: 'recompenses', label: 'Recompenses', emoji: '🎁' },
+  { id: 'manual', label: 'Ajust manual', emoji: '🛠️' },
 ]
 
 // ─── Small reusable UI pieces ─────────────────────────────────────────────────
@@ -152,6 +154,9 @@ export default function AdminPanel({ profiles, routines }: AdminPanelProps) {
           {activeTab === 'recompenses' && (
             <RewardsTab onToast={showToast} />
           )}
+          {activeTab === 'manual' && (
+            <ManualAdjustTab girls={girls} onToast={showToast} />
+          )}
         </motion.div>
       </AnimatePresence>
 
@@ -175,8 +180,6 @@ function PointsEditorTab({
   onToast: (msg: string) => void
 }) {
   const [points, setPoints] = useState<PointsMap>({})
-  const [dirty, setDirty] = useState(false)
-  const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -218,6 +221,11 @@ function PointsEditorTab({
     load()
   }, [girls, routines])
 
+  // Seguiment de canvis per nena
+  const [dirtyByGirl, setDirtyByGirl] = useState<Record<string, boolean>>({})
+  const [savingByGirl, setSavingByGirl] = useState<Record<string, boolean>>({})
+  const [applyAllSaving, setApplyAllSaving] = useState(false)
+
   function adjust(girlId: string, routineId: string, delta: number) {
     const k = `${girlId}__${routineId}`
     setPoints((prev) => {
@@ -227,17 +235,62 @@ function PointsEditorTab({
       const newBad = -Math.max(2, Math.round(newGood * 0.5))
       return { ...prev, [k]: { good: newGood, ok: newOk, bad: newBad } }
     })
-    setDirty(true)
+    setDirtyByGirl((prev) => ({ ...prev, [girlId]: true }))
   }
 
-  async function syncAll() {
-    setSaving(true)
+  async function saveGirl(girlId: string) {
+    setSavingByGirl((prev) => ({ ...prev, [girlId]: true }))
+    const rows = routines.map((routine) => {
+      const v = points[`${girlId}__${routine.id}`] ?? {
+        good: routine.base_points_good,
+        ok: routine.base_points_ok,
+        bad: routine.base_points_bad,
+      }
+      return {
+        profile_id: girlId,
+        routine_id: routine.id,
+        points_good: v.good,
+        points_ok: v.ok,
+        points_bad: v.bad,
+        updated_at: new Date().toISOString(),
+      }
+    })
+
+    const { error } = await supabase
+      .from('routine_points')
+      .upsert(rows, { onConflict: 'profile_id,routine_id' })
+
+    setSavingByGirl((prev) => ({ ...prev, [girlId]: false }))
+    if (error) {
+      onToast('❌ Error en desar els punts')
+    } else {
+      setDirtyByGirl((prev) => ({ ...prev, [girlId]: false }))
+      // Si ja no queda cap nena "bruta", resetem flag global
+      const stillDirty = girls.some((g) => g.id !== girlId && dirtyByGirl[g.id])
+      void stillDirty
+      const name = girls.find((g) => g.id === girlId)?.name ?? ''
+      onToast(`✅ Punts desats per ${name}`)
+    }
+  }
+
+  // Aplica els valors actuals (els que es veuen a l'editor per la primera
+  // nena amb canvis) a totes les nenes — sincronitza.
+  async function applyToAll() {
+    setApplyAllSaving(true)
+    // Referència: primera nena amb canvis o la primera del llistat
+    const sourceId = girls.find((g) => dirtyByGirl[g.id])?.id ?? girls[0]?.id
+    if (!sourceId) { setApplyAllSaving(false); return }
+
     const rows = []
-    for (const girl of girls) {
-      for (const routine of routines) {
-        const k = `${girl.id}__${routine.id}`
-        const v = points[k]
-        if (!v) continue
+    const nextPoints: PointsMap = { ...points }
+    for (const routine of routines) {
+      const v = points[`${sourceId}__${routine.id}`] ?? {
+        good: routine.base_points_good,
+        ok: routine.base_points_ok,
+        bad: routine.base_points_bad,
+      }
+      for (const girl of girls) {
+        nextPoints[`${girl.id}__${routine.id}`] = v
         rows.push({
           profile_id: girl.id,
           routine_id: routine.id,
@@ -253,12 +306,14 @@ function PointsEditorTab({
       .from('routine_points')
       .upsert(rows, { onConflict: 'profile_id,routine_id' })
 
-    setSaving(false)
+    setApplyAllSaving(false)
     if (error) {
-      onToast('❌ Error en desar els punts')
+      onToast('❌ Error en aplicar a totes les nenes')
     } else {
-      setDirty(false)
-      onToast('✅ Punts sincronitzats correctament!')
+      setPoints(nextPoints)
+      setDirtyByGirl({})
+      const name = girls.find((g) => g.id === sourceId)?.name ?? ''
+      onToast(`✅ Punts de ${name} aplicats a totes les nenes`)
     }
   }
 
@@ -290,7 +345,18 @@ function PointsEditorTab({
                     className="text-center font-black pb-1 px-1"
                     style={{ color: girl.color }}
                   >
-                    {girl.name}
+                    <div className="flex flex-col items-center gap-1">
+                      <span>{girl.name}</span>
+                      <button
+                        onClick={() => saveGirl(girl.id)}
+                        disabled={!dirtyByGirl[girl.id] || !!savingByGirl[girl.id]}
+                        className="px-2 py-0.5 rounded-md text-[10px] font-black text-white transition-all disabled:opacity-30"
+                        style={{ backgroundColor: girl.color }}
+                        title={`Desar canvis de ${girl.name}`}
+                      >
+                        {savingByGirl[girl.id] ? '...' : '💾 Desar'}
+                      </button>
+                    </div>
                   </th>
                 ))}
               </tr>
@@ -343,25 +409,17 @@ function PointsEditorTab({
         </div>
       </SectionCard>
 
-      {/* Sync button */}
-      <AnimatePresence>
-        {dirty && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-          >
-            <button
-              onClick={syncAll}
-              disabled={saving}
-              className="w-full py-4 rounded-2xl font-black text-white text-base shadow-lg transition-all active:scale-95 disabled:opacity-60"
-              style={{ background: 'linear-gradient(135deg, #6C63FF, #3498DB)' }}
-            >
-              {saving ? '⏳ Sincronitzant...' : '🔄 Sincronitzar tots els usuaris'}
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Apply to all button — propaga els valors visibles a totes les nenes */}
+      <button
+        onClick={applyToAll}
+        disabled={applyAllSaving || girls.length <= 1}
+        className="w-full py-3 rounded-2xl border-2 border-gray-200 bg-white font-bold text-sm text-gray-600 transition-all active:scale-95 disabled:opacity-50 hover:border-gray-400"
+      >
+        {applyAllSaving ? '⏳ Aplicant...' : '🔁 Aplicar els mateixos punts a totes les nenes'}
+      </button>
+      <p className="text-[11px] text-gray-400 text-center -mt-1">
+        Usa &quot;Desar&quot; a la columna de cada nena per guardar només els seus canvis.
+      </p>
     </div>
   )
 }
@@ -825,6 +883,170 @@ function RewardsTab({ onToast }: { onToast: (msg: string) => void }) {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+// ─── Tab 6: Manual points adjustment ──────────────────────────────────────────
+
+function ManualAdjustTab({
+  girls,
+  onToast,
+}: {
+  girls: Profile[]
+  onToast: (msg: string) => void
+}) {
+  const [targetId, setTargetId] = useState<string>(girls[0]?.id ?? '')
+  const [totals, setTotals] = useState<Record<string, number>>({})
+  const [adjustment, setAdjustment] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [recalcing, setRecalcing] = useState(false)
+
+  const target = girls.find((g) => g.id === targetId)
+
+  const loadTotals = useCallback(async () => {
+    if (girls.length === 0) return
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, total_points')
+      .in('id', girls.map((g) => g.id))
+    if (data) {
+      const map: Record<string, number> = {}
+      for (const row of data as { id: string; total_points: number }[]) {
+        map[row.id] = row.total_points
+      }
+      setTotals(map)
+    }
+  }, [girls])
+
+  useEffect(() => { loadTotals() }, [loadTotals])
+
+  async function handleSave() {
+    if (!target) return
+    const delta = parseInt(adjustment)
+    if (isNaN(delta) || delta === 0) return
+    setSaving(true)
+    await updateProfilePoints(target.id, delta)
+    setAdjustment('')
+    await loadTotals()
+    setSaving(false)
+    onToast(`${delta > 0 ? '+' : ''}${delta} punts aplicats a ${target.name}`)
+  }
+
+  async function handleRecalcAll() {
+    setRecalcing(true)
+    for (const girl of girls) {
+      const { data: logs } = await supabase
+        .from('routine_logs')
+        .select('points_awarded')
+        .eq('profile_id', girl.id)
+      if (logs) {
+        const total = Math.max(0, logs.reduce((s: number, l: { points_awarded: number }) => s + l.points_awarded, 0))
+        const level = getLevelFromPoints(total)
+        await supabase.from('profiles').update({ total_points: total, level }).eq('id', girl.id)
+      }
+    }
+    await loadTotals()
+    setRecalcing(false)
+    onToast('✅ Totals recalculats des de l\'historial')
+  }
+
+  if (girls.length === 0) {
+    return (
+      <SectionCard>
+        <p className="text-center text-gray-400 py-8 font-bold">Cap nena configurada</p>
+      </SectionCard>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <SectionCard>
+        <h2 className="font-black text-gray-800 text-base mb-1">🛠️ Ajust manual de punts</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          Selecciona la nena i suma o resta punts al seu total acumulat.
+        </p>
+
+        {/* Selector visual de nena */}
+        <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+          {girls.map((girl) => {
+            const active = targetId === girl.id
+            return (
+              <button
+                key={girl.id}
+                onClick={() => setTargetId(girl.id)}
+                className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-2xl font-black text-sm transition-all border-2 ${
+                  active ? 'text-white border-transparent shadow-md' : 'bg-white border-gray-200 text-gray-600'
+                }`}
+                style={active ? { backgroundColor: girl.color, borderColor: girl.color } : {}}
+              >
+                {girl.avatar_url ? (
+                  <img src={girl.avatar_url} alt={girl.name} className="w-7 h-7 rounded-full object-cover" />
+                ) : (
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-black"
+                    style={{ backgroundColor: active ? 'rgba(255,255,255,0.2)' : girl.color }}
+                  >
+                    {girl.name[0]}
+                  </div>
+                )}
+                {girl.name}
+              </button>
+            )
+          })}
+        </div>
+
+        {target && (
+          <div
+            className="rounded-2xl p-4 mb-4 text-center"
+            style={{ backgroundColor: `${target.color}15` }}
+          >
+            <p className="text-xs font-bold uppercase tracking-widest" style={{ color: target.color }}>
+              Ajustant punts de
+            </p>
+            <p className="text-2xl font-black mt-1" style={{ color: target.color }}>
+              {target.name}
+            </p>
+            <p className="text-sm font-bold text-gray-600 mt-1">
+              Total actual: <span className="font-black" style={{ color: target.color }}>{totals[target.id] ?? 0} pts</span>
+            </p>
+          </div>
+        )}
+
+        <div className="flex gap-2 mb-2">
+          <input
+            type="number"
+            value={adjustment}
+            onChange={(e) => setAdjustment(e.target.value)}
+            placeholder="+10 o -5"
+            className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-2.5 font-bold text-gray-800 focus:outline-none focus:border-gray-400 text-center"
+          />
+          <button
+            onClick={handleSave}
+            disabled={saving || !adjustment || adjustment === '0'}
+            className="px-5 py-2.5 rounded-xl font-black text-white text-sm transition-all disabled:opacity-40"
+            style={{ backgroundColor: target?.color ?? '#3498DB' }}
+          >
+            {saving ? '...' : '💾 Aplicar'}
+          </button>
+        </div>
+      </SectionCard>
+
+      <SectionCard>
+        <h3 className="font-black text-gray-700 text-sm mb-1">Recalcular totals</h3>
+        <p className="text-xs text-gray-400 mb-3">
+          Recalcula el <span className="font-bold">total acumulat</span> i el nivell de totes les nenes
+          sumant els punts de l&apos;historial complet. Útil si hi ha hagut ajustos manuals que han deixat
+          el total desajustat.
+        </p>
+        <button
+          onClick={handleRecalcAll}
+          disabled={recalcing}
+          className="w-full py-2.5 rounded-xl border-2 border-gray-200 text-sm font-bold text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-all disabled:opacity-40"
+        >
+          {recalcing ? 'Recalculant...' : '🔄 Recalcular totals des de l\'historial'}
+        </button>
+      </SectionCard>
     </div>
   )
 }

@@ -14,7 +14,7 @@ import { resumeAudio } from '@/lib/sound'
 export default function ProfileSelectionPage() {
   const router = useRouter()
   const { setSession, session } = useSession()
-  const { profiles, loading } = useAllProfiles()
+  const { profiles, loading, loaded, error } = useAllProfiles()
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null)
   const [showPin, setShowPin] = useState(false)
   const [setupMode, setSetupMode] = useState(false)
@@ -25,11 +25,21 @@ export default function ProfileSelectionPage() {
     }
   }, [session, router])
 
+  // Only redirect to onboarding when we've CONFIRMED the DB has zero profiles
+  // AND no prior onboarding flag exists. Prevents re-creating profiles when a
+  // transient Supabase error returns an empty list.
   useEffect(() => {
-    if (!loading && profiles.length === 0) {
+    if (!loaded) return
+    if (profiles.length > 0) {
+      try { localStorage.setItem('rutines:onboarded', '1') } catch {}
+      return
+    }
+    const onboardedFlag =
+      typeof window !== 'undefined' && localStorage.getItem('rutines:onboarded') === '1'
+    if (!onboardedFlag) {
       router.replace('/onboarding')
     }
-  }, [loading, profiles, router])
+  }, [loaded, profiles, router])
 
   function handleProfileClick(profile: Profile) {
     resumeAudio()
@@ -74,6 +84,26 @@ export default function ProfileSelectionPage() {
         >
           ⭐
         </motion.div>
+      </div>
+    )
+  }
+
+  // Error state: DB fetch failed AND we know we've been onboarded before.
+  // Do NOT redirect to onboarding — that would re-create profiles.
+  const hasOnboardedFlag =
+    typeof window !== 'undefined' && localStorage.getItem('rutines:onboarded') === '1'
+  if (error && profiles.length === 0 && hasOnboardedFlag) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center bg-[#F0F4FF] p-6 text-center">
+        <div className="text-6xl mb-4">📡</div>
+        <h1 className="text-2xl font-black text-gray-800 mb-2">No s&apos;ha pogut carregar</h1>
+        <p className="text-gray-500 mb-6">Comprova la connexió i torna-ho a provar.</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-6 py-3 bg-[#58CC02] text-white rounded-2xl font-black"
+        >
+          Tornar a provar
+        </button>
       </div>
     )
   }

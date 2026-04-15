@@ -44,10 +44,10 @@ const LEVEL_EMOJIS: Record<DayLevel, string> = {
 }
 const LEVEL_LABELS: Record<DayLevel, string> = {
   empty:   'Sense dades',
-  bad:     'Dia difícil',
-  ok:      'Dia regular',
-  good:    'Bon dia',
-  perfect: 'Dia perfecte!',
+  bad:     'Difícil',
+  ok:      'Regular',
+  good:    'Bé',
+  perfect: 'Perfecte!',
 }
 
 interface WeeklyEasyViewProps {

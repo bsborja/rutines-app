@@ -59,14 +59,25 @@ export function useProfile(profileId: string | null) {
 export function useAllProfiles() {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false) // true only after a confirmed fetch (even if empty)
 
   useEffect(() => {
     let ignore = false
 
     async function fetchProfiles() {
-      const { data } = await supabase.from('profiles').select('*').order('name')
-      if (!ignore && data) setProfiles(data as Profile[])
-      if (!ignore) setLoading(false)
+      const { data, error: err } = await supabase.from('profiles').select('*').order('name')
+      if (ignore) return
+      if (err) {
+        setError(err.message)
+        setLoading(false)
+        // NOTE: do NOT set `loaded` on error — empty list must not be treated as "no profiles"
+        return
+      }
+      setError(null)
+      setProfiles((data as Profile[]) ?? [])
+      setLoaded(true)
+      setLoading(false)
     }
 
     fetchProfiles()
@@ -84,5 +95,5 @@ export function useAllProfiles() {
     }
   }, [])
 
-  return { profiles, loading }
+  return { profiles, loading, error, loaded }
 }

@@ -4,9 +4,8 @@ import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import {
-  BADGE_INFO,
-  BadgeType,
   Badge,
+  BadgeType,
   MASTERY_MEDALS,
   ANIMAL_COLORS,
   OUTFIT_OPTIONS,
@@ -20,7 +19,7 @@ import {
 } from '@/types'
 
 // ---------------------------------------------------------------------------
-// Local animal catalog — mirrors DB seed, same as FantasticAnimalsDisplay
+// Local animal catalog — mirrors DB seed
 // ---------------------------------------------------------------------------
 
 const ALL_ANIMALS: Omit<FantasticAnimal, 'id'>[] = [
@@ -36,8 +35,22 @@ const ALL_ANIMALS: Omit<FantasticAnimal, 'id'>[] = [
   { level_required: 20, name: 'Lleó dels Núvols',      emoji: '🦁', description: 'El més poderós de tots, regna als cims del món' },
 ]
 
+// Mystery hints shown in the locked modal — one per level tier
+const MYSTERY_HINTS: Record<number, string> = {
+  2:  'Un petit guardià amb escates brillants i alè ardent... el primer pas del teu viatge!',
+  4:  'Es diu que viu sota la lluna, amb cua lluent que encanta les aigües...',
+  6:  'Renaixerà de les cendres quan menys t\'ho esperis. Fes-te fort i el trobaràs!',
+  8:  'Un animal pur amb banya màgica. Només els constants el coneixen...',
+  10: 'Vola entre flames sense cremar-se. Quin poder! Quin color tindrà?',
+  12: 'Mig àguila, mig lleó. Guarda tresors antics. Només els valents el desperten!',
+  14: 'Sàvia i antiga, amb moltes cues. Qui serà? Un misteri oriental t\'espera!',
+  16: 'Ales blanques entre núvols... els déus diuen que només els dignes el munten!',
+  18: 'Un guardià del cel nocturn, entre constel·lacions. Esperant-te entre estrelles...',
+  20: 'El més poderós i esquiu. Només els veritables mestres el coneixen. Hi arribaràs?',
+}
+
 // ---------------------------------------------------------------------------
-// Color filter map — tints the animal emoji via CSS filter
+// Color filter map
 // ---------------------------------------------------------------------------
 
 const COLOR_FILTERS: Record<string, string> = {
@@ -50,10 +63,6 @@ const COLOR_FILTERS: Record<string, string> = {
   vermell: 'sepia(1) saturate(12) hue-rotate(310deg) brightness(1.0)',
   taronja: 'sepia(1) saturate(8) hue-rotate(15deg) brightness(1.15)',
 }
-
-// ---------------------------------------------------------------------------
-// Emoji maps for accessories overlaid on the animal
-// ---------------------------------------------------------------------------
 
 const OUTFIT_EMOJI: Record<string, string> = {
   samarreta_heroi: '🦸',
@@ -73,11 +82,103 @@ const ACCESSORY_EMOJI: Record<string, string> = {
   gorra_pirata: '🏴‍☠️',
 }
 
+type MergedAnimal = Omit<FantasticAnimal, 'id'> & { id: string; isUnlocked: boolean }
+
 // ---------------------------------------------------------------------------
-// Merged animal type
+// Badge catalog (10 badges, 2x5 grid)
 // ---------------------------------------------------------------------------
 
-type MergedAnimal = Omit<FantasticAnimal, 'id'> & { id: string; isUnlocked: boolean }
+interface BadgeDef {
+  id: string
+  emoji: string
+  name: string
+  description: string
+  // returns true when earned given the precomputed stats
+  check: (s: BadgeStats) => boolean
+}
+
+interface BadgeStats {
+  earnedDbBadges: Set<BadgeType>
+  hasPerfectDay: boolean
+  hasPerfectWeek: boolean
+  masteryCount: number
+  animalsUnlocked: number
+  animalsTotal: number
+  liquidationCount: number
+}
+
+const BADGE_CATALOG: BadgeDef[] = [
+  {
+    id: 'streak_3',
+    emoji: '🔥',
+    name: 'Primera ratxa',
+    description: '3 dies seguits fent-ho bé',
+    check: (s) => s.earnedDbBadges.has('streak_3'),
+  },
+  {
+    id: 'streak_7',
+    emoji: '⚡',
+    name: 'Setmana de foc',
+    description: '7 dies seguits fent-ho bé',
+    check: (s) => s.earnedDbBadges.has('streak_7'),
+  },
+  {
+    id: 'streak_30',
+    emoji: '💎',
+    name: 'Mes llegendari',
+    description: '30 dies seguits fent-ho bé',
+    check: (s) => s.earnedDbBadges.has('streak_30'),
+  },
+  {
+    id: 'perfect_day',
+    emoji: '✨',
+    name: 'Dia perfecte',
+    description: 'Un dia amb totes les rutines bé',
+    check: (s) => s.hasPerfectDay,
+  },
+  {
+    id: 'perfect_week',
+    emoji: '🌟',
+    name: 'Setmana perfecta',
+    description: 'Una setmana amb totes les rutines bé',
+    check: (s) => s.hasPerfectWeek,
+  },
+  {
+    id: 'triple_mestratge',
+    emoji: '🏆',
+    name: 'Triple mestratge',
+    description: '3 medalles de mestratge guanyades',
+    check: (s) => s.masteryCount >= 3,
+  },
+  {
+    id: 'multi_mestre',
+    emoji: '🎯',
+    name: 'Multi-mestre',
+    description: '5 medalles de mestratge guanyades',
+    check: (s) => s.masteryCount >= 5,
+  },
+  {
+    id: 'colleccionista',
+    emoji: '🐣',
+    name: 'Col·leccionista',
+    description: '5 animals fantàstics desbloquejats',
+    check: (s) => s.animalsUnlocked >= 5,
+  },
+  {
+    id: 'gran_colleccionista',
+    emoji: '🐉',
+    name: 'Gran col·leccionista',
+    description: 'Tots els animals fantàstics desbloquejats',
+    check: (s) => s.animalsTotal > 0 && s.animalsUnlocked >= s.animalsTotal,
+  },
+  {
+    id: 'primer_premi',
+    emoji: '💰',
+    name: 'Primer premi',
+    description: 'Has demanat la teva primera recompensa',
+    check: (s) => s.liquidationCount >= 1,
+  },
+]
 
 // ---------------------------------------------------------------------------
 // AnimalPreview — overlaid accessories on the animal emoji
@@ -108,7 +209,6 @@ function AnimalPreview({ emoji, color, outfit, glasses, accessory, size = 'lg' }
       className="relative inline-flex items-center justify-center"
       style={{ width: containerSize, height: containerSize }}
     >
-      {/* Hat / accessory on top of the head — pirate flag goes to the side */}
       {accessory === 'gorra_pirata' ? (
         <span
           className={`absolute ${isLg ? 'text-2xl' : 'text-lg'}`}
@@ -125,7 +225,6 @@ function AnimalPreview({ emoji, color, outfit, glasses, accessory, size = 'lg' }
         </span>
       ) : null}
 
-      {/* Main animal emoji with CSS color filter */}
       <span
         className={`${animalClass} leading-none select-none`}
         style={{ filter, zIndex: 1 }}
@@ -133,7 +232,6 @@ function AnimalPreview({ emoji, color, outfit, glasses, accessory, size = 'lg' }
         {emoji}
       </span>
 
-      {/* Glasses over the eyes (~28% from top) */}
       {glasses !== 'none' && (
         <span
           className={`absolute ${glassClass}`}
@@ -143,7 +241,6 @@ function AnimalPreview({ emoji, color, outfit, glasses, accessory, size = 'lg' }
         </span>
       )}
 
-      {/* Outfit at the bottom */}
       {outfit !== 'none' && (
         <span
           className={`absolute ${outfitClass}`}
@@ -162,7 +259,7 @@ function AnimalPreview({ emoji, color, outfit, glasses, accessory, size = 'lg' }
 
 interface CollectionViewProps {
   profileId: string
-  totalPoints: number  // kept for future use
+  totalPoints: number
   color: string
 }
 
@@ -190,26 +287,21 @@ interface WeekBucket {
   [weekKey: string]: { total: number; good: number }
 }
 
-interface MonthBucket {
-  [monthKey: string]: { total: number; good: number }
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function getISOWeekKey(dateStr: string): string {
   const d = new Date(dateStr)
-  // Monday-based week start
   const day = d.getDay() === 0 ? 6 : d.getDay() - 1
   const monday = new Date(d)
   monday.setDate(d.getDate() - day)
   return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`
 }
 
-function getMonthKey(dateStr: string): string {
+function getDayKey(dateStr: string): string {
   const d = new Date(dateStr)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 // ---------------------------------------------------------------------------
@@ -217,18 +309,19 @@ function getMonthKey(dateStr: string): string {
 // ---------------------------------------------------------------------------
 
 export default function CollectionView({ profileId, totalPoints: _totalPoints, color }: CollectionViewProps) {
-  // --- Badges ---
   const [badges, setBadges] = useState<Badge[]>([])
-
-  // --- Medals ---
   const [routineStats, setRoutineStats] = useState<RoutineStats[]>([])
   const [logs, setLogs] = useState<RoutineLogRow[]>([])
+  const [liquidationCount, setLiquidationCount] = useState(0)
+  const [revocations, setRevocations] = useState<Record<string, string>>({})
+  // medal_key -> latest revoked_at ISO string
 
-  // --- Animals ---
   const [dbAnimals, setDbAnimals] = useState<FantasticAnimal[]>([])
   const [unlockedIds, setUnlockedIds] = useState<Set<string>>(new Set())
   const [customizations, setCustomizations] = useState<AnimalCustomization[]>([])
   const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null)
+  const [lockedAnimalLevel, setLockedAnimalLevel] = useState<number | null>(null)
+  const [selectedBadgeId, setSelectedBadgeId] = useState<string | null>(null)
   const [editCustom, setEditCustom] = useState<Omit<AnimalCustomization, 'id' | 'profile_id' | 'animal_id'>>({
     color: 'original',
     outfit: 'none',
@@ -236,27 +329,18 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
     accessory: 'none',
   })
   const [saving, setSaving] = useState(false)
-
-  // --- Tooltip state for medals ---
   const [activeMedalId, setActiveMedalId] = useState<string | null>(null)
-
-  // ---------------------------------------------------------------------------
-  // Data loading
-  // ---------------------------------------------------------------------------
 
   useEffect(() => {
     if (!profileId) return
 
     async function load() {
-      // 1. Badges
       const { data: badgeData } = await supabase
         .from('badges')
         .select('*')
         .eq('profile_id', profileId)
-
       if (badgeData) setBadges(badgeData as Badge[])
 
-      // 2. Routine logs + routines for medal calculation
       const { data: logData } = await supabase
         .from('routine_logs')
         .select('routine_id, score, created_at')
@@ -288,7 +372,6 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
         setRoutineStats(Object.values(statsMap))
       }
 
-      // 3. Animals from DB (fantastic_animals + profile_animals)
       const [animalsRes, unlockedRes] = await Promise.all([
         supabase.from('fantastic_animals').select('*').order('level_required'),
         supabase.from('profile_animals').select('animal_id').eq('profile_id', profileId),
@@ -296,25 +379,45 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
       setDbAnimals((animalsRes.data as FantasticAnimal[]) ?? [])
       setUnlockedIds(new Set((unlockedRes.data ?? []).map((r: { animal_id: string }) => r.animal_id)))
 
-      // 4. Animal customizations (table may not exist yet — handle gracefully)
       try {
         const { data: customData } = await supabase
           .from('animal_customizations')
           .select('*')
           .eq('profile_id', profileId)
-
         if (customData) setCustomizations(customData as AnimalCustomization[])
       } catch {
-        // Table not created yet — silently ignore
+        // ignore
+      }
+
+      try {
+        const { data: revData } = await supabase
+          .from('medal_revocations')
+          .select('medal_key, revoked_at')
+          .eq('profile_id', profileId)
+          .order('revoked_at', { ascending: false })
+        const latest: Record<string, string> = {}
+        for (const row of (revData ?? []) as { medal_key: string; revoked_at: string }[]) {
+          if (!latest[row.medal_key]) latest[row.medal_key] = row.revoked_at
+        }
+        setRevocations(latest)
+      } catch {
+        // table may not exist yet
+      }
+
+      try {
+        const { count } = await supabase
+          .from('wallet_transactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('profile_id', profileId)
+          .eq('type', 'liquidate')
+        setLiquidationCount(count ?? 0)
+      } catch {
+        setLiquidationCount(0)
       }
     }
 
     load()
   }, [profileId])
-
-  // ---------------------------------------------------------------------------
-  // Merge local catalog with DB data (same pattern as FantasticAnimalsDisplay)
-  // ---------------------------------------------------------------------------
 
   const mergedAnimals: MergedAnimal[] = ALL_ANIMALS.map((a) => {
     const dbMatch = dbAnimals.find((d) => d.level_required === a.level_required)
@@ -328,7 +431,6 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
 
   function isMedalEarned(medalKey: string): boolean {
     if (medalKey === 'perfect_week') {
-      // Check if any ISO week had 100% good scores (at least 1 log)
       const weeks: WeekBucket = {}
       for (const log of logs) {
         const wk = getISOWeekKey(log.created_at)
@@ -340,10 +442,10 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
     }
 
     if (medalKey === 'consistent_month') {
-      // Check if any calendar month had >= 80% good
-      const months: MonthBucket = {}
+      const months: Record<string, { total: number; good: number }> = {}
       for (const log of logs) {
-        const mk = getMonthKey(log.created_at)
+        const d = new Date(log.created_at)
+        const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
         if (!months[mk]) months[mk] = { total: 0, good: 0 }
         months[mk].total++
         if (log.score === 'good') months[mk].good++
@@ -351,24 +453,72 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
       return Object.values(months).some((m) => m.total > 0 && m.good / m.total >= 0.8)
     }
 
-    // Regular routine medals — match by keyword in routine name
     const keyword = medalKey.toLowerCase()
     const matchingStats = routineStats.filter((rs) =>
       rs.routineName.toLowerCase().includes(keyword)
     )
-
     if (matchingStats.length === 0) return false
+    const isWkndMedal = matchingStats.some((rs) => rs.isWeekend)
+    const baseThreshold = isWkndMedal ? 10 : 20
+    const regainThreshold = isWkndMedal ? 5 : 10
 
-    const threshold = matchingStats.some((rs) => rs.isWeekend) ? 10 : 20
-    return matchingStats.some((rs) => rs.goodLogs >= threshold)
+    const revokedAt = revocations[medalKey]
+    if (revokedAt) {
+      // Count 'good' logs AFTER revocation for matching routines
+      const matchingIds = new Set(matchingStats.map((s) => s.routineId))
+      const goodSince = logs.filter(
+        (l) => matchingIds.has(l.routine_id) && l.score === 'good' && l.created_at > revokedAt,
+      ).length
+      return goodSince >= regainThreshold
+    }
+
+    return matchingStats.some((rs) => rs.goodLogs >= baseThreshold)
   }
 
   // ---------------------------------------------------------------------------
-  // Animal customization modal helpers
+  // Badge stats
+  // ---------------------------------------------------------------------------
+
+  const earnedDbBadges: Set<BadgeType> = new Set(badges.map((b) => b.badge_type))
+
+  // Perfect day: a day where at least 2 logs exist and all are "good"
+  const dayBuckets: Record<string, { total: number; good: number }> = {}
+  for (const log of logs) {
+    const dk = getDayKey(log.created_at)
+    if (!dayBuckets[dk]) dayBuckets[dk] = { total: 0, good: 0 }
+    dayBuckets[dk].total++
+    if (log.score === 'good') dayBuckets[dk].good++
+  }
+  const hasPerfectDay = Object.values(dayBuckets).some((d) => d.total >= 2 && d.good === d.total)
+
+  // Perfect week (reuse)
+  const hasPerfectWeek = isMedalEarned('perfect_week')
+
+  // Mastery count (existing logic)
+  const masteryCount = MASTERY_MEDALS.filter((m) => isMedalEarned(m.key)).length
+
+  const animalsUnlocked = mergedAnimals.filter((a) => a.isUnlocked).length
+  const animalsTotal = ALL_ANIMALS.length
+
+  const badgeStats: BadgeStats = {
+    earnedDbBadges,
+    hasPerfectDay,
+    hasPerfectWeek,
+    masteryCount,
+    animalsUnlocked,
+    animalsTotal,
+    liquidationCount,
+  }
+
+  // ---------------------------------------------------------------------------
+  // Modal helpers
   // ---------------------------------------------------------------------------
 
   const selectedAnimal = mergedAnimals.find((a) => a.id === selectedAnimalId) ?? null
-  const existingCustom = customizations.find((c) => c.animal_id === selectedAnimalId)
+  const selectedBadge = BADGE_CATALOG.find((b) => b.id === selectedBadgeId) ?? null
+  const lockedAnimalCatalog = lockedAnimalLevel != null
+    ? ALL_ANIMALS.find((a) => a.level_required === lockedAnimalLevel) ?? null
+    : null
 
   function openModal(animalId: string) {
     const existing = customizations.find((c) => c.animal_id === animalId)
@@ -402,26 +552,18 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
         .from('animal_customizations')
         .upsert(payload, { onConflict: 'profile_id,animal_id' })
 
-      // Refresh customizations
       const { data } = await supabase
         .from('animal_customizations')
         .select('*')
         .eq('profile_id', profileId)
       if (data) setCustomizations(data as AnimalCustomization[])
     } catch {
-      // Ignore if table doesn't exist yet
+      // ignore
     } finally {
       setSaving(false)
       closeModal()
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Derived values
-  // ---------------------------------------------------------------------------
-
-  const earnedBadgeTypes = new Set(badges.map((b) => b.badge_type))
-  const allBadgeTypes: BadgeType[] = ['streak_3', 'streak_7', 'streak_30']
 
   // ---------------------------------------------------------------------------
   // Render
@@ -431,48 +573,40 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
     <div className="flex flex-col gap-8 pb-10">
 
       {/* ================================================================
-          SECTION 1: INSÍGNIES
+          SECTION 1: INSÍGNIES (10 badges, 2x5 grid)
       ================================================================ */}
       <section>
         <div className="flex items-center gap-2 mb-4">
           <span className="text-2xl">🏅</span>
           <h2 className="text-xl font-black text-gray-800">Insígnies</h2>
+          <span className="ml-auto text-sm font-bold text-gray-500">
+            {BADGE_CATALOG.filter((b) => b.check(badgeStats)).length} / {BADGE_CATALOG.length}
+          </span>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          {allBadgeTypes.map((badgeType) => {
-            const info = BADGE_INFO[badgeType]
-            const earned = earnedBadgeTypes.has(badgeType)
-
+        <div className="grid grid-cols-5 gap-2">
+          {BADGE_CATALOG.map((badge, idx) => {
+            const earned = badge.check(badgeStats)
             return (
-              <motion.div
-                key={badgeType}
-                initial={{ opacity: 0, y: 12 }}
+              <motion.button
+                key={badge.id}
+                type="button"
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                whileTap={earned ? { scale: 0.95 } : {}}
-                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
+                transition={{ delay: idx * 0.03 }}
+                whileTap={{ scale: 0.94 }}
+                onClick={() => setSelectedBadgeId(badge.id)}
+                className={`flex flex-col items-center gap-1 p-2 rounded-2xl border-2 transition-all ${
                   earned
-                    ? 'bg-yellow-50 border-yellow-300 shadow-md'
-                    : 'bg-gray-50 border-gray-200 opacity-40'
+                    ? 'bg-yellow-50 border-yellow-300 shadow-sm'
+                    : 'bg-gray-50 border-gray-200 opacity-50'
                 }`}
               >
-                <span className={`text-4xl ${earned ? '' : 'grayscale'}`}>{info.emoji}</span>
-                <p className="text-xs font-bold text-center text-gray-700 leading-tight">
-                  {info.label}
+                <span className={`text-2xl ${earned ? '' : 'grayscale'}`}>{badge.emoji}</span>
+                <p className="text-[10px] font-bold text-center text-gray-700 leading-tight">
+                  {earned ? badge.name : '???'}
                 </p>
-                <p className="text-xs text-center text-gray-500 leading-tight">
-                  {info.description}
-                </p>
-                {earned && (
-                  <motion.span
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="text-xs font-black text-yellow-600 bg-yellow-100 px-2 py-0.5 rounded-full"
-                  >
-                    ✓ Guanyat!
-                  </motion.span>
-                )}
-              </motion.div>
+              </motion.button>
             )
           })}
         </div>
@@ -521,7 +655,6 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
                   </span>
                 )}
 
-                {/* Fun reason tooltip / popup */}
                 <AnimatePresence>
                   {isActive && (
                     <motion.div
@@ -532,7 +665,6 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
                     >
                       <span className="font-bold block mb-1">{medal.name}</span>
                       {medal.funReason}
-                      {/* Arrow */}
                       <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
                     </motion.div>
                   )}
@@ -550,6 +682,9 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
         <div className="flex items-center gap-2 mb-4">
           <span className="text-2xl">🦄</span>
           <h2 className="text-xl font-black text-gray-800">Animals Fantàstics</h2>
+          <span className="ml-auto text-sm font-bold text-gray-500">
+            {animalsUnlocked} / {animalsTotal}
+          </span>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -566,21 +701,24 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.04 }}
-                whileTap={animal.isUnlocked ? { scale: 0.96 } : {}}
+                whileTap={{ scale: 0.96 }}
                 className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 cursor-pointer select-none transition-all ${
                   animal.isUnlocked
                     ? 'bg-white border-purple-200 shadow-md'
-                    : 'bg-gray-50 border-gray-200 opacity-60'
+                    : 'bg-gray-50 border-gray-200'
                 }`}
                 onClick={() => {
-                  if (animal.isUnlocked && animal.id) openModal(animal.id)
+                  if (animal.isUnlocked && animal.id) {
+                    openModal(animal.id)
+                  } else {
+                    setLockedAnimalLevel(animal.level_required)
+                  }
                 }}
               >
-                {/* Animal preview — blurred and locked when not unlocked */}
                 <div
                   className="relative flex items-center justify-center"
                   style={{
-                    filter: animal.isUnlocked ? 'none' : 'blur(3px)',
+                    filter: animal.isUnlocked ? 'none' : 'blur(9px)',
                   }}
                 >
                   {animal.isUnlocked && custom ? (
@@ -593,11 +731,10 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
                       size="sm"
                     />
                   ) : (
-                    <span className="text-4xl leading-none select-none">{animal.emoji}</span>
+                    <span className="text-5xl leading-none select-none">{animal.emoji}</span>
                   )}
                 </div>
 
-                {/* Lock badge for locked animals */}
                 {!animal.isUnlocked && (
                   <span className="text-lg">🔒</span>
                 )}
@@ -622,12 +759,122 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
       </section>
 
       {/* ================================================================
+          BADGE DETAIL MODAL
+      ================================================================ */}
+      <AnimatePresence>
+        {selectedBadge && (
+          <>
+            <motion.div
+              key="badge-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-30"
+              onClick={() => setSelectedBadgeId(null)}
+            />
+            <motion.div
+              key="badge-modal"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="fixed inset-0 z-40 flex items-center justify-center p-6 pointer-events-none"
+            >
+              <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 flex flex-col items-center gap-3 pointer-events-auto">
+                {(() => {
+                  const earned = selectedBadge.check(badgeStats)
+                  return (
+                    <>
+                      <span className={`text-6xl ${earned ? '' : 'grayscale opacity-60'}`}>
+                        {selectedBadge.emoji}
+                      </span>
+                      <h3 className="text-xl font-black text-gray-800 text-center">
+                        {selectedBadge.name}
+                      </h3>
+                      <p className="text-sm text-gray-600 text-center leading-snug">
+                        {selectedBadge.description}
+                      </p>
+                      <span
+                        className={`text-xs font-black px-3 py-1 rounded-full ${
+                          earned ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {earned ? '✓ Guanyada!' : '🔒 Encara no guanyada'}
+                      </span>
+                      <button
+                        onClick={() => setSelectedBadgeId(null)}
+                        className="mt-2 w-full py-3 rounded-2xl font-bold text-white"
+                        style={{ backgroundColor: color }}
+                      >
+                        Tancar
+                      </button>
+                    </>
+                  )
+                })()}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ================================================================
+          LOCKED ANIMAL MYSTERY MODAL
+      ================================================================ */}
+      <AnimatePresence>
+        {lockedAnimalCatalog && (
+          <>
+            <motion.div
+              key="locked-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/70 z-30"
+              onClick={() => setLockedAnimalLevel(null)}
+            />
+            <motion.div
+              key="locked-modal"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="fixed inset-0 z-40 flex items-center justify-center p-6 pointer-events-none"
+            >
+              <div className="bg-gradient-to-br from-purple-50 to-indigo-100 rounded-3xl shadow-2xl max-w-sm w-full p-6 flex flex-col items-center gap-3 pointer-events-auto border-2 border-purple-200">
+                <span
+                  className="text-7xl"
+                  style={{ filter: 'blur(9px)' }}
+                >
+                  {lockedAnimalCatalog.emoji}
+                </span>
+                <span className="text-3xl">🔒</span>
+                <h3 className="text-xl font-black text-purple-900 text-center">
+                  Un misteri t&apos;espera...
+                </h3>
+                <p className="text-sm text-purple-800 text-center leading-snug italic">
+                  &ldquo;{MYSTERY_HINTS[lockedAnimalCatalog.level_required] ?? 'Un animal màgic t\'espera!'}&rdquo;
+                </p>
+                <div className="bg-white/70 rounded-xl px-4 py-2 mt-1">
+                  <p className="text-sm font-black text-purple-700 text-center">
+                    Arriba al nivell {lockedAnimalCatalog.level_required} per descobrir-lo!
+                  </p>
+                </div>
+                <button
+                  onClick={() => setLockedAnimalLevel(null)}
+                  className="mt-2 w-full py-3 rounded-2xl font-bold text-white"
+                  style={{ backgroundColor: color }}
+                >
+                  Continuaré esforçant-me!
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ================================================================
           ANIMAL CUSTOMIZATION MODAL
       ================================================================ */}
       <AnimatePresence>
         {selectedAnimalId && selectedAnimal && (
           <>
-            {/* Backdrop */}
             <motion.div
               key="backdrop"
               initial={{ opacity: 0 }}
@@ -637,7 +884,6 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
               onClick={closeModal}
             />
 
-            {/* Modal sheet */}
             <motion.div
               key="modal"
               initial={{ y: '100%', opacity: 0 }}
@@ -646,18 +892,15 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
               className="fixed bottom-0 left-0 right-0 z-40 bg-white rounded-t-3xl shadow-2xl max-h-[92vh] overflow-y-auto"
             >
-              {/* Handle bar */}
               <div className="flex justify-center pt-3 pb-1">
                 <div className="w-12 h-1.5 bg-gray-300 rounded-full" />
               </div>
 
               <div className="px-5 pb-8 pt-2 flex flex-col gap-5">
-                {/* Title */}
                 <h3 className="text-xl font-black text-gray-800 text-center">
                   Personalitza {selectedAnimal.name}
                 </h3>
 
-                {/* Animal preview — large, with overlaid accessories and color filter */}
                 <div className="flex justify-center py-4">
                   <AnimalPreview
                     emoji={selectedAnimal.emoji}
@@ -669,10 +912,8 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
                   />
                 </div>
 
-                {/* Description */}
                 <p className="text-sm text-gray-500 text-center">{selectedAnimal.description}</p>
 
-                {/* COLOR PICKER */}
                 <div>
                   <p className="text-sm font-black text-gray-700 mb-2">Color</p>
                   <div className="flex gap-2 flex-wrap">
@@ -693,7 +934,6 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
                   </div>
                 </div>
 
-                {/* OUTFIT PICKER */}
                 <div>
                   <p className="text-sm font-black text-gray-700 mb-2">Roba</p>
                   <div className="grid grid-cols-4 gap-2">
@@ -717,7 +957,6 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
                   </div>
                 </div>
 
-                {/* GLASSES PICKER */}
                 <div>
                   <p className="text-sm font-black text-gray-700 mb-2">Ulleres</p>
                   <div className="grid grid-cols-4 gap-2">
@@ -741,7 +980,6 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
                   </div>
                 </div>
 
-                {/* ACCESSORY PICKER */}
                 <div>
                   <p className="text-sm font-black text-gray-700 mb-2">Accessori</p>
                   <div className="grid grid-cols-4 gap-2">
@@ -765,7 +1003,6 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
                   </div>
                 </div>
 
-                {/* SAVE BUTTON */}
                 <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={saveCustomization}
@@ -776,7 +1013,6 @@ export default function CollectionView({ profileId, totalPoints: _totalPoints, c
                   {saving ? 'Desant...' : '💾 Desar personalització'}
                 </motion.button>
 
-                {/* Cancel */}
                 <button
                   onClick={closeModal}
                   className="w-full py-3 rounded-2xl font-bold text-gray-500 text-base bg-gray-100"
