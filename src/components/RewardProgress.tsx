@@ -6,12 +6,16 @@ import { pointsToEuros } from '@/lib/points'
 
 interface RewardProgressProps {
   weeklyPoints: number
+  walletEuros: number    // accumulated balance (the real progress towards rewards)
   color: string
   pointsPerEuro: number  // dynamic ratio for this profile
 }
 
-export default function RewardProgress({ weeklyPoints, color, pointsPerEuro }: RewardProgressProps) {
-  const euros = Math.min(pointsToEuros(weeklyPoints, pointsPerEuro), MAX_WEEKLY_EUROS)
+export default function RewardProgress({ weeklyPoints, walletEuros, color, pointsPerEuro }: RewardProgressProps) {
+  // El saldo REAL acumulat (que avança fins que es demana la recompensa).
+  const euros = Math.max(0, walletEuros)
+  // Setmanal només com a indicador secundari.
+  const weeklyEuros = Math.min(pointsToEuros(weeklyPoints, pointsPerEuro), MAX_WEEKLY_EUROS)
 
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm">
@@ -19,7 +23,7 @@ export default function RewardProgress({ weeklyPoints, color, pointsPerEuro }: R
         <h3 className="text-base font-black text-gray-800">Recompenses</h3>
         <div className="text-right">
           <p className="text-xl font-black" style={{ color }}>{euros.toFixed(2)}€</p>
-          <p className="text-xs text-gray-500">aquesta setmana</p>
+          <p className="text-xs text-gray-500">acumulats · +{weeklyEuros.toFixed(2)}€ setmana</p>
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
@@ -30,10 +30,37 @@ export default function OnboardingPage() {
   const [confirmMontse, setConfirmMontse] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
+  const [checking, setChecking] = useState(true)
+
+  // Guard: si ja hi ha perfils a BD, no entrem a l'onboarding mai més.
+  // Això evita que una navegació errònia torni a crear perfils.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase.from('profiles').select('id').limit(1)
+      if (cancelled) return
+      if (!error && data && data.length > 0) {
+        try { localStorage.setItem('rutines:onboarded', '1') } catch {}
+        router.replace('/')
+        return
+      }
+      setChecking(false)
+    })()
+    return () => { cancelled = true }
+  }, [router])
 
   async function handleCreateProfiles() {
     setLoading(true)
     const inserted: typeof createdProfiles = []
+
+    // Doble verificació: si hi ha cap perfil, avortem per no crear duplicats
+    const { data: existing } = await supabase.from('profiles').select('id, name, role, color').limit(10)
+    if (existing && existing.length > 0) {
+      try { localStorage.setItem('rutines:onboarded', '1') } catch {}
+      setLoading(false)
+      router.replace('/')
+      return
+    }
 
     for (const p of DEFAULT_PROFILES) {
       const { data, error } = await supabase
@@ -59,6 +86,7 @@ export default function OnboardingPage() {
     }
 
     setCreatedProfiles(inserted)
+    try { localStorage.setItem('rutines:onboarded', '1') } catch {}
     setLoading(false)
     setStep('pins')
   }
@@ -98,6 +126,20 @@ export default function OnboardingPage() {
   }
 
   const stepIndex = STEPS.indexOf(step)
+
+  if (checking) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-[#F0F4FF]">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+          className="text-5xl"
+        >
+          ⭐
+        </motion.div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-dvh bg-[#F0F4FF] flex flex-col">

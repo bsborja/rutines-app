@@ -58,6 +58,13 @@ export default function RoutinesManagementTab({ girls, onToast }: RoutinesManage
   const [scheduleDirty, setScheduleDirty] = useState(false)
   const [scheduleSaving, setScheduleSaving] = useState(false)
 
+  // Merge routines state
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const [mergeSelection, setMergeSelection] = useState<Set<string>>(new Set())
+  const [mergeName, setMergeName] = useState('')
+  const [mergeEmoji, setMergeEmoji] = useState('🔀')
+  const [mergeSaving, setMergeSaving] = useState(false)
+
   const fetchRoutines = useCallback(async () => {
     setLoading(true)
     const { data } = await supabase.from('routines').select('*').order('order_index')
@@ -81,6 +88,16 @@ export default function RoutinesManagementTab({ girls, onToast }: RoutinesManage
 
     setSaving(true)
     const isWeekend = category === 'cap_de_setmana'
+    const defaultMask = isWeekend ? 65 : 62
+    // Defensiu: si la màscara és 0 (incoherent) o undefined, força el default
+    // de la categoria. També: si canvia la categoria de weekend → laboral o
+    // viceversa i la màscara és incompatible, la reinicialitzem.
+    const rawMask = editing.active_weekdays
+    const maskOk =
+      typeof rawMask === 'number' && rawMask > 0 &&
+      (isWeekend ? (rawMask & 65) !== 0 : (rawMask & 62) !== 0)
+    const finalMask = maskOk ? rawMask! : defaultMask
+
     const payload = {
       name: name.trim(),
       description: (description || '').trim(),
@@ -90,7 +107,7 @@ export default function RoutinesManagementTab({ girls, onToast }: RoutinesManage
       base_points_ok: base_points_ok ?? 3,
       base_points_bad: base_points_bad ?? -5,
       is_weekend_only: isWeekend,
-      active_weekdays: editing.active_weekdays ?? (isWeekend ? 65 : 62),
+      active_weekdays: finalMask,
       is_active: true,
       order_index: editing.order_index ?? 999,
     }
@@ -140,6 +157,72 @@ export default function RoutinesManagementTab({ girls, onToast }: RoutinesManage
     await supabase.from('routines').update({ archived_at: null }).eq('id', id)
     await fetchRoutines()
     onToast('✅ Rutina restaurada!')
+  }
+
+  // ─── Merge routines (Option A: create new + archive originals) ─────────
+  function openMerge() {
+    setMergeSelection(new Set())
+    setMergeName('')
+    setMergeEmoji('🔀')
+    setMergeOpen(true)
+  }
+
+  function toggleMergeRoutine(id: string) {
+    setMergeSelection((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  async function handleMerge() {
+    if (mergeSelection.size < 2 || !mergeName.trim()) return
+    const selected = routines.filter((r) => mergeSelection.has(r.id))
+    if (selected.length < 2) return
+
+    setMergeSaving(true)
+
+    // Sum points from selected routines
+    const sumGood = selected.reduce((s, r) => s + (r.base_points_good ?? 0), 0)
+    const sumOk  = selected.reduce((s, r) => s + (r.base_points_ok ?? 0), 0)
+    const sumBad = selected.reduce((s, r) => s + (r.base_points_bad ?? 0), 0)
+
+    // Inherit category & weekday mask from the first selected routine
+    const first = selected[0]
+    const isWeekend = first.category === 'cap_de_setmana'
+
+    const payload = {
+      name: mergeName.trim(),
+      description: `Fusió de: ${selected.map((r) => r.name).join(', ')}`,
+      emoji: mergeEmoji.trim() || '🔀',
+      category: first.category,
+      base_points_good: sumGood,
+      base_points_ok: sumOk,
+      base_points_bad: sumBad,
+      is_weekend_only: isWeekend,
+      active_weekdays: first.active_weekdays ?? (isWeekend ? 65 : 62),
+      is_active: true,
+      order_index: first.order_index ?? 999,
+    }
+
+    const { error: insertErr } = await supabase.from('routines').insert(payload)
+    if (insertErr) {
+      onToast('❌ Error creant la rutina fusionada')
+      setMergeSaving(false)
+      return
+    }
+
+    // Archive originals
+    const archivedAt = new Date().toISOString()
+    await supabase
+      .from('routines')
+      .update({ archived_at: archivedAt })
+      .in('id', selected.map((r) => r.id))
+
+    await fetchRoutines()
+    setMergeSaving(false)
+    setMergeOpen(false)
+    onToast(`✅ ${selected.length} rutines fusionades a "${mergeName.trim()}"!`)
   }
 
   // ─── Inline schedule grid ──────────────────────────────────────────────
@@ -277,13 +360,25 @@ export default function RoutinesManagementTab({ girls, onToast }: RoutinesManage
   return (
     <div className="space-y-4">
       {/* Add button */}
-      <button
-        onClick={() => startNew()}
-        className="w-full py-3.5 rounded-2xl font-black text-white text-base shadow-lg transition-all active:scale-95"
-        style={{ background: 'linear-gradient(135deg, #6C63FF, #3498DB)' }}
-      >
-        ✨ Nova rutina
-      </button>
+      <div className="flex gap-2">
+        <button
+          onClick={() => startNew()}
+          className="flex-1 py-3.5 rounded-2xl font-black text-white text-base shadow-lg transition-all active:scale-95"
+          style={{ background: 'linear-gradient(135deg, #6C63FF, #3498DB)' }}
+        >
+          ✨ Nova rutina
+        </button>
+        {activeRoutines.length >= 2 && (
+          <button
+            onClick={openMerge}
+            className="px-4 py-3.5 rounded-2xl font-black text-white text-sm shadow-lg transition-all active:scale-95"
+            style={{ background: 'linear-gradient(135deg, #F39C12, #E67E22)' }}
+            title="Fusionar rutines"
+          >
+            🔀 Fusionar
+          </button>
+        )}
+      </div>
 
       {/* Active routines by category */}
       {CATEGORIES.map((cat) => {
@@ -457,6 +552,116 @@ export default function RoutinesManagementTab({ girls, onToast }: RoutinesManage
           />
         )}
       </AnimatePresence>
+
+      {/* Merge routines modal */}
+      <AnimatePresence>
+        {mergeOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => !mergeSaving && setMergeOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto"
+            >
+              <p className="text-2xl text-center mb-1">🔀</p>
+              <h3 className="font-black text-gray-800 text-center text-lg mb-1">Fusionar rutines</h3>
+              <p className="text-gray-500 text-xs text-center mb-4 leading-snug">
+                Selecciona 2 o més rutines. Es crearà una nova rutina sumant els punts i les originals s&apos;arxivaran.
+              </p>
+
+              {/* Routine selector */}
+              <div className="space-y-1.5 mb-4 max-h-48 overflow-y-auto border-2 border-gray-100 rounded-2xl p-2">
+                {activeRoutines.map((r) => {
+                  const checked = mergeSelection.has(r.id)
+                  return (
+                    <label
+                      key={r.id}
+                      className={`flex items-center gap-2 p-2 rounded-xl cursor-pointer transition-colors ${
+                        checked ? 'bg-orange-50 border border-orange-200' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleMergeRoutine(r.id)}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-lg">{r.emoji}</span>
+                      <span className="text-sm font-bold text-gray-700 flex-1 truncate">{r.name}</span>
+                      <span className="text-xs text-gray-400">
+                        +{r.base_points_good}
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+
+              {/* New routine form */}
+              <div className="space-y-2 mb-4">
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Emoji</label>
+                  <input
+                    type="text"
+                    value={mergeEmoji}
+                    onChange={(e) => setMergeEmoji(e.target.value)}
+                    maxLength={3}
+                    className="w-16 px-3 py-2 border-2 border-gray-200 rounded-xl text-center text-xl"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Nom de la rutina fusionada</label>
+                  <input
+                    type="text"
+                    value={mergeName}
+                    onChange={(e) => setMergeName(e.target.value)}
+                    placeholder="Ex: Vestir-se i pentinar-se"
+                    className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Summary */}
+              {mergeSelection.size >= 2 && (() => {
+                const sel = routines.filter((r) => mergeSelection.has(r.id))
+                const sg = sel.reduce((s, r) => s + (r.base_points_good ?? 0), 0)
+                const sk = sel.reduce((s, r) => s + (r.base_points_ok ?? 0), 0)
+                const sb = sel.reduce((s, r) => s + (r.base_points_bad ?? 0), 0)
+                return (
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4 text-xs text-gray-700">
+                    <p className="font-bold mb-1">Punts de la nova rutina (suma):</p>
+                    <p>Bé: <span className="font-black text-green-600">+{sg}</span> · Regular: <span className="font-black text-yellow-600">+{sk}</span> · Malament: <span className="font-black text-red-600">{sb}</span></p>
+                  </div>
+                )
+              })()}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setMergeOpen(false)}
+                  disabled={mergeSaving}
+                  className="flex-1 py-3 rounded-2xl border-2 border-gray-200 font-bold text-gray-600"
+                >
+                  Cancel·lar
+                </button>
+                <button
+                  onClick={handleMerge}
+                  disabled={mergeSaving || mergeSelection.size < 2 || !mergeName.trim()}
+                  className="flex-1 py-3 rounded-2xl font-bold text-white disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #F39C12, #E67E22)' }}
+                >
+                  {mergeSaving ? 'Fusionant...' : `🔀 Fusionar (${mergeSelection.size})`}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -602,7 +807,9 @@ function RoutineEditModal({
   function set(field: keyof EditingRoutine, value: unknown) {
     const updated = { ...routine, [field]: value }
     if (field === 'category') {
-      updated.is_weekend_only = value === 'cap_de_setmana'
+      const isWknd = value === 'cap_de_setmana'
+      updated.is_weekend_only = isWknd
+      updated.active_weekdays = isWknd ? 65 : 62
     }
     onChange(updated)
   }
@@ -691,6 +898,56 @@ function RoutineEditModal({
                   {CATEGORY_LABELS[cat]}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Weekday selector */}
+          <div>
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">Dies actius</label>
+            <div className="flex gap-1 mb-2">
+              {DAY_ORDER.map((day) => {
+                const mask = routine.active_weekdays ?? (routine.category === 'cap_de_setmana' ? 65 : 62)
+                const bit = 1 << day
+                const enabled = (mask & bit) !== 0
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => set('active_weekdays', enabled ? mask & ~bit : mask | bit)}
+                    className="flex-1 h-9 rounded-lg text-xs font-bold border-2 transition-all active:scale-95"
+                    style={
+                      enabled
+                        ? { backgroundColor: '#3498DB', borderColor: '#3498DB', color: 'white' }
+                        : { backgroundColor: 'white', borderColor: '#e5e7eb', color: '#9ca3af' }
+                    }
+                  >
+                    {DAY_LABELS[day]}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="flex gap-2 text-[11px]">
+              <button
+                type="button"
+                onClick={() => set('active_weekdays', 127)}
+                className="px-2 py-1 rounded-lg bg-gray-100 font-bold text-gray-600 hover:bg-gray-200"
+              >
+                Cada dia
+              </button>
+              <button
+                type="button"
+                onClick={() => set('active_weekdays', 62)}
+                className="px-2 py-1 rounded-lg bg-gray-100 font-bold text-gray-600 hover:bg-gray-200"
+              >
+                Entre setmana
+              </button>
+              <button
+                type="button"
+                onClick={() => set('active_weekdays', 65)}
+                className="px-2 py-1 rounded-lg bg-gray-100 font-bold text-gray-600 hover:bg-gray-200"
+              >
+                Cap de setmana
+              </button>
             </div>
           </div>
 
