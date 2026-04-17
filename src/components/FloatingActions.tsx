@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useEffect, useRef, useState } from 'react'
+import { motion, AnimatePresence, useMotionValue, PanInfo } from 'framer-motion'
 import { Routine, EffectivePoints } from '@/types'
 
 interface FloatingActionsProps {
@@ -14,6 +14,9 @@ interface FloatingActionsProps {
   onAntiTrigger: () => void
 }
 
+const SUPER_KEY = 'fab:super:pos'
+const ANTI_KEY  = 'fab:anti:pos'
+
 export default function FloatingActions({
   superRoutine,
   superDone = false,
@@ -24,6 +27,7 @@ export default function FloatingActions({
   onAntiTrigger,
 }: FloatingActionsProps) {
   const [confirm, setConfirm] = useState<'super' | 'anti' | null>(null)
+  const constraintsRef = useRef<HTMLDivElement>(null)
 
   const hasSuper = superRoutine && !superDone
   const hasAnti  = !!antiRoutine
@@ -35,23 +39,30 @@ export default function FloatingActions({
 
   return (
     <>
-      {/* Floating buttons stack, bottom-right above bottom padding */}
-      <div className="fixed right-4 bottom-24 z-30 flex flex-col gap-3 items-end">
-        {hasSuper && (
-          <motion.button
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            whileTap={{ scale: 0.9 }}
-            onClick={() => setConfirm('super')}
-            title={`Super rutina: ${superRoutine!.name}`}
-            className="relative w-12 h-12 rounded-full shadow-lg flex items-center justify-center bg-gradient-to-br from-yellow-300 via-orange-400 to-red-500 border-2 border-white"
-            aria-label={`Completar super rutina ${superRoutine!.name}`}
-          >
-            <span className="text-2xl">{superRoutine!.emoji}</span>
+      {/* Drag boundary — full viewport minus safe areas for navbar / bottom tabs */}
+      <div
+        ref={constraintsRef}
+        aria-hidden
+        className="fixed left-2 right-2 top-16 bottom-20 pointer-events-none z-20"
+      />
+
+      {hasSuper && (
+        <DraggableFab
+          storageKey={SUPER_KEY}
+          defaultOffsetRight={16}
+          defaultOffsetBottom={160}
+          size={48}
+          constraintsRef={constraintsRef}
+          onTap={() => setConfirm('super')}
+          ariaLabel={`Completar super rutina ${superRoutine!.name}`}
+          title={`Super rutina: ${superRoutine!.name}  ·  Mantén premut per moure`}
+        >
+          <div className="w-12 h-12 rounded-full shadow-lg flex items-center justify-center bg-gradient-to-br from-yellow-300 via-orange-400 to-red-500 border-2 border-white relative">
+            <span className="text-2xl pointer-events-none select-none">{superRoutine!.emoji}</span>
             <motion.span
               animate={{ scale: [1, 1.4, 1], rotate: [0, 20, -20, 0] }}
               transition={{ duration: 2, repeat: Infinity }}
-              className="absolute -top-1 -right-1 text-sm"
+              className="absolute -top-1 -right-1 text-sm pointer-events-none select-none"
             >
               ⭐
             </motion.span>
@@ -60,25 +71,28 @@ export default function FloatingActions({
               transition={{ duration: 1.8, repeat: Infinity }}
               className="absolute inset-0 rounded-full ring-4 ring-yellow-300/60 pointer-events-none"
             />
-          </motion.button>
-        )}
-        {hasAnti && (
-          <motion.button
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            whileTap={{ scale: 0.9 }}
-            onClick={() => setConfirm('anti')}
-            title={`Anti-rutina: ${antiRoutine!.name}`}
-            className="relative w-14 h-14 rounded-full shadow-xl flex items-center justify-center bg-gradient-to-br from-red-500 to-red-700 border-2 border-white"
-            aria-label={`Registrar anti-rutina ${antiRoutine!.name}`}
-          >
-            <span className="text-2xl grayscale-[0%]">{antiRoutine!.emoji}</span>
-            <span className="absolute -top-1 -right-1 text-xs bg-white rounded-full w-5 h-5 flex items-center justify-center">🚫</span>
-          </motion.button>
-        )}
-      </div>
+          </div>
+        </DraggableFab>
+      )}
 
-      {/* Confirmation modal */}
+      {hasAnti && (
+        <DraggableFab
+          storageKey={ANTI_KEY}
+          defaultOffsetRight={16}
+          defaultOffsetBottom={96}
+          size={56}
+          constraintsRef={constraintsRef}
+          onTap={() => setConfirm('anti')}
+          ariaLabel={`Registrar anti-rutina ${antiRoutine!.name}`}
+          title={`Anti-rutina: ${antiRoutine!.name}  ·  Mantén premut per moure`}
+        >
+          <div className="w-14 h-14 rounded-full shadow-xl flex items-center justify-center bg-gradient-to-br from-red-500 to-red-700 border-2 border-white relative">
+            <span className="text-2xl pointer-events-none select-none">{antiRoutine!.emoji}</span>
+            <span className="absolute -top-1 -right-1 text-xs bg-white rounded-full w-5 h-5 flex items-center justify-center pointer-events-none">🚫</span>
+          </div>
+        </DraggableFab>
+      )}
+
       <AnimatePresence>
         {confirm && (
           <motion.div
@@ -155,5 +169,98 @@ export default function FloatingActions({
         )}
       </AnimatePresence>
     </>
+  )
+}
+
+// ─── DraggableFab ────────────────────────────────────────────────────────────
+
+interface DraggableFabProps {
+  storageKey: string
+  defaultOffsetRight: number
+  defaultOffsetBottom: number
+  size: number
+  constraintsRef: React.RefObject<HTMLDivElement | null>
+  onTap: () => void
+  ariaLabel: string
+  title: string
+  children: React.ReactNode
+}
+
+function DraggableFab({
+  storageKey,
+  defaultOffsetRight,
+  defaultOffsetBottom,
+  size,
+  constraintsRef,
+  onTap,
+  ariaLabel,
+  title,
+  children,
+}: DraggableFabProps) {
+  const x = useMotionValue(0)
+  const y = useMotionValue(0)
+  const draggedRef = useRef(false)
+  const [ready, setReady] = useState(false)
+
+  // Compute initial position on mount (client-only)
+  useEffect(() => {
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    let initX = vw - size - defaultOffsetRight
+    let initY = vh - size - defaultOffsetBottom
+
+    try {
+      const saved = localStorage.getItem(storageKey)
+      if (saved) {
+        const pos = JSON.parse(saved) as { x: number; y: number }
+        if (typeof pos.x === 'number' && typeof pos.y === 'number') {
+          // Clamp into current viewport in case the screen rotated / shrunk
+          initX = Math.max(8, Math.min(vw - size - 8, pos.x))
+          initY = Math.max(72, Math.min(vh - size - 80, pos.y))
+        }
+      }
+    } catch { /* ignore */ }
+
+    x.set(initX)
+    y.set(initY)
+    setReady(true)
+  }, [storageKey, size, defaultOffsetRight, defaultOffsetBottom, x, y])
+
+  function handleDragStart() {
+    draggedRef.current = true
+  }
+
+  function handleDragEnd(_: PointerEvent | MouseEvent | TouchEvent, _info: PanInfo) {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({ x: x.get(), y: y.get() }))
+    } catch { /* ignore quota / private mode */ }
+    // Give the click event a tick to see the flag, then reset
+    setTimeout(() => { draggedRef.current = false }, 50)
+  }
+
+  function handleClick() {
+    if (draggedRef.current) return
+    onTap()
+  }
+
+  return (
+    <motion.button
+      drag
+      dragMomentum={false}
+      dragElastic={0}
+      dragConstraints={constraintsRef}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onClick={handleClick}
+      whileTap={{ scale: 0.92 }}
+      whileDrag={{ scale: 1.08, cursor: 'grabbing' }}
+      initial={{ opacity: 0, scale: 0 }}
+      animate={{ opacity: ready ? 1 : 0, scale: ready ? 1 : 0 }}
+      style={{ x, y, position: 'fixed', top: 0, left: 0, touchAction: 'none', zIndex: 30 }}
+      aria-label={ariaLabel}
+      title={title}
+    >
+      {children}
+    </motion.button>
   )
 }
