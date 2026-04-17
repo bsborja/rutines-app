@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion'
 import { BehaviorScore, Routine, EffectivePoints } from '@/types'
-import { playOkSound, playBadSound, resumeAudio } from '@/lib/sound'
+import { playOkSound, playBadSound, playSkipSound, resumeAudio } from '@/lib/sound'
 
 interface BehaviorOption {
   score: BehaviorScore
@@ -20,6 +20,7 @@ interface BehaviorSelectorProps {
   effectivePoints?: EffectivePoints
   loggedByParent?: boolean
   onSelect: (score: BehaviorScore, points: number) => void
+  onSkip?: () => void
   onCancel: () => void
 }
 
@@ -28,6 +29,7 @@ export default function BehaviorSelector({
   effectivePoints,
   loggedByParent = false,
   onSelect,
+  onSkip,
   onCancel,
 }: BehaviorSelectorProps) {
   const pts = effectivePoints ?? {
@@ -110,9 +112,19 @@ export default function BehaviorSelector({
             ))}
           </div>
 
-          <button onClick={onCancel} className="w-full py-4 text-gray-400 text-sm hover:text-gray-600 transition-colors border-t border-gray-100">
-            Cancel·lar
-          </button>
+          <div className="flex border-t border-gray-100">
+            {onSkip && (
+              <button
+                onClick={() => { resumeAudio(); playSkipSound(); onSkip() }}
+                className="flex-1 py-4 text-gray-500 text-sm font-bold hover:bg-gray-50 transition-colors border-r border-gray-100"
+              >
+                ⏭️ Saltar
+              </button>
+            )}
+            <button onClick={onCancel} className="flex-1 py-4 text-gray-400 text-sm hover:text-gray-600 transition-colors">
+              Cancel·lar
+            </button>
+          </div>
         </motion.div>
       </motion.div>
     </AnimatePresence>

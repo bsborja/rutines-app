@@ -51,8 +51,9 @@ export default function RoutineCard({
     if (batchMode) { onToggleSelect?.() } else { onClick() }
   }
 
-  const borderColor = isSelected ? '#3B82F6' : isDone ? (score?.color || '#E5E7EB') : '#E5E7EB'
-  const bgColor     = isSelected ? '#EFF6FF' : isDone ? (score?.bg || 'white') : 'white'
+  const isSuper = !!routine.is_super
+  const borderColor = isSelected ? '#3B82F6' : isDone ? (score?.color || '#E5E7EB') : isSuper ? '#FBBF24' : '#E5E7EB'
+  const bgColor     = isSelected ? '#EFF6FF' : isDone ? (score?.bg || 'white') : isSuper ? '#FFFBEB' : 'white'
 
   return (
     <motion.button
@@ -88,9 +89,23 @@ export default function RoutineCard({
           </div>
         )}
         <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: isSkip ? '#D1D5DB' : categoryColor }} />
-        <span className="text-3xl" style={{ opacity: isSkip ? 0.5 : 1 }}>{routine.emoji}</span>
+        <span className="text-3xl relative" style={{ opacity: isSkip ? 0.5 : 1 }}>
+          {routine.emoji}
+          {isSuper && !isDone && (
+            <motion.span
+              animate={{ rotate: [0, 10, -10, 0], scale: [1, 1.2, 1] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="absolute -top-1 -right-2 text-sm"
+            >
+              ⭐
+            </motion.span>
+          )}
+        </span>
         <div className="flex-1 min-w-0">
-          <p className={`font-black leading-tight text-base ${isSkip ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{routine.name}</p>
+          <p className={`font-black leading-tight text-base flex items-center gap-1.5 ${isSkip ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+            {routine.name}
+            {isSuper && <span className="text-[9px] font-black bg-yellow-400 text-white px-1.5 py-0.5 rounded-full">SUPER</span>}
+          </p>
           {!isSkip && <p className="text-gray-500 text-xs mt-0.5 truncate">{routine.description}</p>}
           {isSkip  && <p className="text-gray-400 text-xs mt-0.5 italic">Saltada avui</p>}
         </div>

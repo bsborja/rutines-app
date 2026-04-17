@@ -153,6 +153,31 @@ export default function RoutinesManagementTab({ girls, onToast }: RoutinesManage
     onToast('📦 Rutina arxivada')
   }
 
+  async function toggleSuper(id: string) {
+    const current = routines.find((r) => r.id === id)
+    if (!current) return
+    const next = !current.is_super
+    if (next) {
+      // Clear other super
+      await supabase.from('routines').update({ is_super: false }).neq('id', id).eq('is_super', true)
+    }
+    await supabase.from('routines').update({ is_super: next, is_anti: next ? false : current.is_anti }).eq('id', id)
+    await fetchRoutines()
+    onToast(next ? '⭐ Marcada com a super rutina!' : 'Super rutina desactivada')
+  }
+
+  async function toggleAnti(id: string) {
+    const current = routines.find((r) => r.id === id)
+    if (!current) return
+    const next = !current.is_anti
+    if (next) {
+      await supabase.from('routines').update({ is_anti: false }).neq('id', id).eq('is_anti', true)
+    }
+    await supabase.from('routines').update({ is_anti: next, is_super: next ? false : current.is_super }).eq('id', id)
+    await fetchRoutines()
+    onToast(next ? '🚫 Marcada com a anti-rutina!' : 'Anti-rutina desactivada')
+  }
+
   async function handleRestore(id: string) {
     await supabase.from('routines').update({ archived_at: null }).eq('id', id)
     await fetchRoutines()
@@ -401,6 +426,8 @@ export default function RoutinesManagementTab({ girls, onToast }: RoutinesManage
                     onEdit={() => startEdit(routine)}
                     onToggleSchedule={() => toggleExpandSchedule(routine.id)}
                     onArchive={() => setArchiveConfirm(routine.id)}
+                    onToggleSuper={() => toggleSuper(routine.id)}
+                    onToggleAnti={() => toggleAnti(routine.id)}
                   />
                   {/* Inline schedule grid */}
                   <AnimatePresence>
@@ -674,23 +701,53 @@ function RoutineRow({
   onEdit,
   onToggleSchedule,
   onArchive,
+  onToggleSuper,
+  onToggleAnti,
 }: {
   routine: Routine
   isScheduleExpanded: boolean
   onEdit: () => void
   onToggleSchedule: () => void
   onArchive: () => void
+  onToggleSuper: () => void
+  onToggleAnti: () => void
 }) {
   const catColor = CATEGORY_COLORS[routine.category]
+  const isSuper = !!routine.is_super
+  const isAnti = !!routine.is_anti
+  const rowClass = isSuper
+    ? 'bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-300'
+    : isAnti
+    ? 'bg-red-50 border-red-200'
+    : 'bg-white border-transparent'
   return (
-    <div className="bg-white rounded-2xl p-3 flex items-center gap-3 shadow-sm border-2 border-transparent">
+    <div className={`rounded-2xl p-3 flex items-center gap-3 shadow-sm border-2 ${rowClass}`}>
       <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: catColor }} />
       <span className="text-2xl">{routine.emoji}</span>
       <div className="flex-1 min-w-0">
-        <p className="font-bold text-sm text-gray-800 leading-tight">{routine.name}</p>
+        <p className="font-bold text-sm text-gray-800 leading-tight flex items-center gap-1.5">
+          {routine.name}
+          {isSuper && <span title="Super rutina" className="text-[10px] font-black bg-yellow-400 text-white px-1.5 py-0.5 rounded-full">⭐ SUPER</span>}
+          {isAnti && <span title="Anti-rutina" className="text-[10px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded-full">🚫 ANTI</span>}
+        </p>
         <p className="text-xs text-gray-400 truncate">{routine.description}</p>
       </div>
-      <div className="flex items-center gap-1 flex-shrink-0">
+      <div className="flex items-center gap-0.5 flex-shrink-0">
+        <button
+          onClick={onToggleSuper}
+          title={isSuper ? 'Treure de super rutina' : 'Marcar com a super rutina (botó flotant ⭐)'}
+          className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${isSuper ? 'bg-yellow-200' : 'hover:bg-yellow-50 opacity-40'}`}
+        >
+          <span className="text-base">⭐</span>
+        </button>
+        <button
+          onClick={onToggleAnti}
+          title={isAnti ? 'Treure d\'anti-rutina' : 'Marcar com a anti-rutina (botó flotant 🚫)'}
+          className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${isAnti ? 'bg-red-200' : 'hover:bg-red-50 opacity-40'}`}
+        >
+          <span className="text-base">🚫</span>
+        </button>
+        <div className="w-px h-6 bg-gray-200 mx-0.5" />
         <button
           onClick={onEdit}
           title="Editar"

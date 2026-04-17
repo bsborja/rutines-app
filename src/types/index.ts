@@ -32,6 +32,8 @@ export interface Routine {
   emoji: string
   order_index: number
   archived_at?: string | null
+  is_super?: boolean
+  is_anti?: boolean
 }
 
 export interface FantasticAnimal {

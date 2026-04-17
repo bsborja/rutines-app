@@ -34,6 +34,7 @@ import { updateWalletEuros, getWalletBalance } from '@/lib/wallet'
 import { getMedalKeyForRoutine, countBadThisWeekForMedal, revokeMedal } from '@/lib/medals'
 import Wallet from '@/components/Wallet'
 import BatchActionBar from '@/components/BatchActionBar'
+import FloatingActions from '@/components/FloatingActions'
 import { resumeAudio, playOkSound, playBadSound } from '@/lib/sound'
 import { BehaviorScore } from '@/types'
 
@@ -58,7 +59,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
   const { points: profilePointsMap } = useProfileRoutinePoints(effectiveTargetId)
 
   const [selectedRoutine, setSelectedRoutine] = useState<Routine | null>(null)
-  const [celebration, setCelebration] = useState<{ visible: boolean; message: string; sub: string }>({
+  const [celebration, setCelebration] = useState<{ visible: boolean; message: string; sub: string; epic?: boolean }>({
     visible: false, message: '', sub: '',
   })
   const [newAnimals, setNewAnimals] = useState<FantasticAnimal[]>([])
@@ -91,6 +92,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
 
   function getRoutinesByCategory(category: RoutineCategory) {
     return routines.filter((r) => {
+      if (r.is_anti) return false
       if (!isRoutineActiveToday(r)) return false
       if (r.is_weekend_only && !isWeekend) return false
       if (!r.is_weekend_only && category === 'cap_de_setmana') return false
@@ -119,13 +121,14 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
       await supabase.from('routine_logs').delete().eq('id', existing.id)
     }
 
-    await supabase.from('routine_logs').insert({
+    const { error: skipErr } = await supabase.from('routine_logs').insert({
       profile_id: targetId,
       routine_id: routine.id,
       score: 'skip',
       points_awarded: 0,
       logged_by: session.profileId,
     })
+    if (skipErr) console.error('[skip] insert failed:', skipErr)
   }
 
   function handleBehaviorSelect(score: BehaviorScore, points: number) {
@@ -297,6 +300,79 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
   const maxWeeklyPoints = calcMaxWeeklyPoints(routines, profilePointsMap)
   const pointsPerEuro = calcPointsPerEuro(maxWeeklyPoints)
 
+  // ─── Super / Anti rutines ────────────────────────────────────────────────
+  const superRoutine = routines.find((r) => r.is_super && !r.archived_at) ?? null
+  const antiRoutine  = routines.find((r) => r.is_anti  && !r.archived_at) ?? null
+  const superDoneToday = !!(superRoutine && logs.some((l) => l.routine_id === superRoutine.id && l.profile_id === effectiveProfileId && l.score === 'good'))
+  const superEffPoints = superRoutine ? getEffectivePoints(superRoutine, profilePointsMap) : undefined
+  const antiEffPoints  = antiRoutine  ? getEffectivePoints(antiRoutine,  profilePointsMap) : undefined
+
+  async function handleSuperComplete() {
+    if (!superRoutine || !session) return
+    resumeAudio()
+    const targetId = isParent ? targetProfileId : profileId
+    const points = superEffPoints?.good ?? superRoutine.base_points_good
+
+    setCelebration({
+      visible: true,
+      epic: true,
+      message: `🏆 SUPER RUTINA!`,
+      sub: `+${points} punts! Ets una CAMPIONA!`,
+    })
+
+    void (async () => {
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+      const todayEnd   = new Date(); todayEnd.setHours(24, 0, 0, 0)
+      const { data: existingLogs } = await supabase
+        .from('routine_logs').select('id, points_awarded')
+        .eq('profile_id', targetId).eq('routine_id', superRoutine.id)
+        .gte('created_at', todayStart.toISOString()).lt('created_at', todayEnd.toISOString()).limit(1)
+      const existing = existingLogs?.[0]
+      if (existing) {
+        await Promise.all([
+          updateProfilePoints(targetId, -existing.points_awarded),
+          updateWalletEuros(targetId, -existing.points_awarded / pointsPerEuro),
+          supabase.from('routine_logs').delete().eq('id', existing.id),
+        ])
+      }
+      await Promise.all([
+        supabase.from('routine_logs').insert({ profile_id: targetId, routine_id: superRoutine.id, score: 'good', points_awarded: points, logged_by: session.profileId }),
+        updateProfilePoints(targetId, points),
+        updateWalletEuros(targetId, points / pointsPerEuro),
+      ])
+      const [newBadges, unlocked] = await Promise.all([checkAndAwardBadges(targetId), checkAndUnlockAnimals(targetId)])
+      if (unlocked.length > 0) { setNewAnimals(unlocked); setAnimalIdx(0) }
+      if (newBadges.length > 0 || unlocked.length > 0) {
+        setCelebration((prev) => ({
+          ...prev,
+          sub: `+${points} punts!${newBadges.length > 0 ? ' 🏅 Nova insígnia!' : ''}${unlocked.length > 0 ? ' 🐉 Animal nou!' : ''}`,
+        }))
+      }
+    })()
+  }
+
+  async function handleAntiTrigger() {
+    if (!antiRoutine || !session) return
+    resumeAudio()
+    playBadSound()
+    const targetId = isParent ? targetProfileId : profileId
+    const basePts = antiEffPoints?.bad ?? antiRoutine.base_points_bad
+    const points = basePts > 0 ? -Math.abs(basePts) : basePts
+
+    const { error } = await supabase.from('routine_logs').insert({
+      profile_id: targetId,
+      routine_id: antiRoutine.id,
+      score: 'bad',
+      points_awarded: points,
+      logged_by: session.profileId,
+    })
+    if (error) { console.error('[anti] insert failed:', error); return }
+    await Promise.all([
+      updateProfilePoints(targetId, points),
+      updateWalletEuros(targetId, points / pointsPerEuro),
+    ])
+  }
+
   const girlSelector = isParent && (
     <div className="mt-4 mb-2">
       <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Registrant per a:</p>
@@ -399,10 +475,21 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
           )}
         </main>
         {selectedRoutine && (
-          <BehaviorSelector routine={selectedRoutine} effectivePoints={getEffectivePoints(selectedRoutine, profilePointsMap)} loggedByParent onSelect={handleBehaviorSelect} onCancel={() => setSelectedRoutine(null)} />
+          <BehaviorSelector routine={selectedRoutine} effectivePoints={getEffectivePoints(selectedRoutine, profilePointsMap)} loggedByParent onSelect={handleBehaviorSelect} onSkip={() => { const r = selectedRoutine; setSelectedRoutine(null); if (r) handleSkipRoutine(r) }} onCancel={() => setSelectedRoutine(null)} />
         )}
         <BatchActionBar count={selectedRoutineIds.size} totalGoodPoints={batchGoodTotal} totalOkPoints={batchOkTotal} totalBadPoints={batchBadTotal} onRate={handleBatchRate} onCancel={() => { setBatchMode(false); setSelectedRoutineIds(new Set()) }} />
-        <CelebrationOverlay visible={celebration.visible} message={celebration.message} subMessage={celebration.sub} onComplete={() => setCelebration((p) => ({ ...p, visible: false }))} />
+        {activeTab === 'rutines' && (
+          <FloatingActions
+            superRoutine={superRoutine}
+            superDone={superDoneToday}
+            superPoints={superEffPoints}
+            antiRoutine={antiRoutine}
+            antiPoints={antiEffPoints}
+            onSuperComplete={handleSuperComplete}
+            onAntiTrigger={handleAntiTrigger}
+          />
+        )}
+        <CelebrationOverlay visible={celebration.visible} message={celebration.message} subMessage={celebration.sub} epic={celebration.epic} onComplete={() => setCelebration((p) => ({ ...p, visible: false, epic: false }))} />
         <AnimalUnlockOverlay animals={newAnimals} idx={animalIdx} onNext={() => { if (animalIdx < newAnimals.length - 1) setAnimalIdx(animalIdx + 1); else setNewAnimals([]) }} />
       </div>
     )
@@ -464,10 +551,21 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
       </main>
 
       {selectedRoutine && (
-        <BehaviorSelector routine={selectedRoutine} effectivePoints={getEffectivePoints(selectedRoutine, profilePointsMap)} loggedByParent={false} onSelect={handleBehaviorSelect} onCancel={() => setSelectedRoutine(null)} />
+        <BehaviorSelector routine={selectedRoutine} effectivePoints={getEffectivePoints(selectedRoutine, profilePointsMap)} loggedByParent={false} onSelect={handleBehaviorSelect} onSkip={() => { const r = selectedRoutine; setSelectedRoutine(null); if (r) handleSkipRoutine(r) }} onCancel={() => setSelectedRoutine(null)} />
       )}
       <BatchActionBar count={selectedRoutineIds.size} totalGoodPoints={batchGoodTotal} totalOkPoints={batchOkTotal} totalBadPoints={batchBadTotal} onRate={handleBatchRate} onCancel={() => { setBatchMode(false); setSelectedRoutineIds(new Set()) }} />
-      <CelebrationOverlay visible={celebration.visible} message={celebration.message} subMessage={celebration.sub} onComplete={() => setCelebration((p) => ({ ...p, visible: false }))} />
+      {activeTab === 'rutines' && (
+        <FloatingActions
+          superRoutine={superRoutine}
+          superDone={superDoneToday}
+          superPoints={superEffPoints}
+          antiRoutine={antiRoutine}
+          antiPoints={antiEffPoints}
+          onSuperComplete={handleSuperComplete}
+          onAntiTrigger={handleAntiTrigger}
+        />
+      )}
+      <CelebrationOverlay visible={celebration.visible} message={celebration.message} subMessage={celebration.sub} epic={celebration.epic} onComplete={() => setCelebration((p) => ({ ...p, visible: false, epic: false }))} />
       <AnimalUnlockOverlay animals={newAnimals} idx={animalIdx} onNext={() => { if (animalIdx < newAnimals.length - 1) setAnimalIdx(animalIdx + 1); else setNewAnimals([]) }} />
     </div>
   )
