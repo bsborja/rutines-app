@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { SessionProvider } from '@/context/SessionContext'
+import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister'
+import { InstallPrompt } from '@/components/InstallPrompt'
 
 export const metadata: Metadata = {
   title: 'Rutines ⭐',
@@ -26,6 +28,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ca">
       <body>
         <SessionProvider>{children}</SessionProvider>
+        <ServiceWorkerRegister />
+        <InstallPrompt />
       </body>
     </html>
   )
