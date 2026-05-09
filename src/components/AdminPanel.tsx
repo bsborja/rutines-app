@@ -29,15 +29,28 @@ type RewardCostsMap = Record<string, number>
 // key: profileId
 type WeeklyEurosMap = Record<string, number>
 
-type TabId = 'rutines_mgmt' | 'punts' | 'recalcul' | 'euros' | 'recompenses' | 'manual'
+type TabId = 'rutines_mgmt' | 'perfils' | 'punts' | 'recalcul' | 'euros' | 'recompenses' | 'manual'
 
 const TABS: { id: TabId; label: string; emoji: string }[] = [
   { id: 'rutines_mgmt', label: 'Rutines', emoji: '📝' },
+  { id: 'perfils', label: 'Nenes', emoji: '👧' },
   { id: 'punts', label: 'Punts', emoji: '⚡' },
   { id: 'recalcul', label: 'Recàlcul', emoji: '🤖' },
   { id: 'euros', label: 'Euros/setmana', emoji: '💶' },
   { id: 'recompenses', label: 'Recompenses', emoji: '🎁' },
   { id: 'manual', label: 'Ajust manual', emoji: '🛠️' },
+]
+
+// Color palette for new kids — avoids collision with existing family profiles
+const KID_COLORS: { hex: string; label: string }[] = [
+  { hex: '#FF6B9D', label: 'Rosa' },
+  { hex: '#2ECC71', label: 'Verd' },
+  { hex: '#6C63FF', label: 'Lila' },
+  { hex: '#FF7F50', label: 'Coral' },
+  { hex: '#00CEC9', label: 'Cian' },
+  { hex: '#FFD93D', label: 'Groc' },
+  { hex: '#FF6B35', label: 'Taronja' },
+  { hex: '#5A89FF', label: 'Blau' },
 ]
 
 // ─── Small reusable UI pieces ─────────────────────────────────────────────────
@@ -134,6 +147,9 @@ export default function AdminPanel({ profiles, routines }: AdminPanelProps) {
           {activeTab === 'rutines_mgmt' && (
             <RoutinesManagementTab girls={girls} onToast={showToast} />
           )}
+          {activeTab === 'perfils' && (
+            <ProfilesTab girls={girls} onToast={showToast} />
+          )}
           {activeTab === 'punts' && (
             <PointsEditorTab
               girls={girls}
@@ -164,6 +180,186 @@ export default function AdminPanel({ profiles, routines }: AdminPanelProps) {
       <AnimatePresence>
         {toast && <Toast message={toast} onClose={() => setToast(null)} />}
       </AnimatePresence>
+    </div>
+  )
+}
+
+// ─── Tab: Profiles (add/list nenes) ───────────────────────────────────────────
+
+function ProfilesTab({
+  girls,
+  onToast,
+}: {
+  girls: Profile[]
+  onToast: (msg: string) => void
+}) {
+  const usedColors = new Set(girls.map((g) => g.color.toLowerCase()))
+  const firstFree = KID_COLORS.find((c) => !usedColors.has(c.hex.toLowerCase())) ?? KID_COLORS[0]
+
+  const [name, setName] = useState('')
+  const [birthDate, setBirthDate] = useState('')
+  const [color, setColor] = useState(firstFree.hex)
+  const [saving, setSaving] = useState(false)
+
+  async function handleAdd() {
+    const trimmed = name.trim()
+    if (!trimmed) {
+      onToast('❌ Cal posar un nom')
+      return
+    }
+    if (girls.some((g) => g.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+      onToast(`❌ Ja existeix una nena anomenada "${trimmed}"`)
+      return
+    }
+
+    setSaving(true)
+    const { error } = await supabase.from('profiles').insert({
+      id: crypto.randomUUID(),
+      name: trimmed,
+      role: 'nena',
+      birth_date: birthDate || null,
+      color,
+      is_julia_mode: false,
+      level: 1,
+      total_points: 0,
+      avatar_url: null,
+      pin_hash: null,
+    })
+    setSaving(false)
+
+    if (error) {
+      console.error('[profiles] insert failed:', error)
+      onToast(`❌ Error en crear el perfil`)
+      return
+    }
+
+    setName('')
+    setBirthDate('')
+    // Pick next free color for the next add
+    const nextUsed = new Set([...usedColors, color.toLowerCase()])
+    const nextFree = KID_COLORS.find((c) => !nextUsed.has(c.hex.toLowerCase())) ?? KID_COLORS[0]
+    setColor(nextFree.hex)
+    onToast(`✅ ${trimmed} afegida!`)
+  }
+
+  return (
+    <div className="space-y-3">
+      <SectionCard>
+        <h2 className="font-black text-gray-800 text-base mb-1">👧 Nenes actuals</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          {girls.length === 0 ? 'Cap nena configurada.' : `${girls.length} nena${girls.length === 1 ? '' : 's'} al sistema.`}
+        </p>
+
+        {girls.length > 0 && (
+          <div className="space-y-2">
+            {girls.map((g) => (
+              <div
+                key={g.id}
+                className="flex items-center gap-3 bg-gray-50 rounded-2xl px-4 py-3"
+              >
+                {g.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={g.avatar_url}
+                    alt={g.name}
+                    className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                  />
+                ) : (
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-black flex-shrink-0"
+                    style={{ backgroundColor: g.color }}
+                  >
+                    {g.name[0]}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-gray-800 text-sm truncate">{g.name}</p>
+                  {g.birth_date && (
+                    <p className="text-xs text-gray-400 font-semibold">
+                      {new Date(g.birth_date).toLocaleDateString('ca-ES', {
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric',
+                      })}
+                    </p>
+                  )}
+                </div>
+                <span
+                  className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full"
+                  style={{ backgroundColor: `${g.color}20`, color: g.color }}
+                >
+                  Lvl {g.level}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard>
+        <h2 className="font-black text-gray-800 text-base mb-1">➕ Afegir nova nena</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          Crea un perfil per a una amiga (Mia, Marc...). Comparteixen rutines amb les altres.
+        </p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-bold text-gray-600 mb-1">Nom</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ex: Mia"
+              maxLength={20}
+              className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 font-bold text-gray-800 focus:outline-none focus:border-gray-400"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-600 mb-1">
+              Data de naixement <span className="font-normal text-gray-400">(opcional)</span>
+            </label>
+            <input
+              type="date"
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 font-bold text-gray-800 focus:outline-none focus:border-gray-400"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-600 mb-2">Color</label>
+            <div className="flex flex-wrap gap-2">
+              {KID_COLORS.map((c) => {
+                const taken = usedColors.has(c.hex.toLowerCase()) && c.hex !== color
+                return (
+                  <button
+                    key={c.hex}
+                    onClick={() => setColor(c.hex)}
+                    disabled={taken}
+                    title={taken ? `${c.label} (en ús)` : c.label}
+                    aria-label={c.label}
+                    className="w-10 h-10 rounded-full border-4 transition-all active:scale-90 disabled:opacity-30 disabled:cursor-not-allowed"
+                    style={{
+                      backgroundColor: c.hex,
+                      borderColor: color === c.hex ? '#1f2937' : 'transparent',
+                    }}
+                  />
+                )
+              })}
+            </div>
+          </div>
+
+          <button
+            onClick={handleAdd}
+            disabled={saving || !name.trim()}
+            className="w-full py-3 rounded-2xl font-black text-white text-base shadow-md transition-all active:scale-95 disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, #58CC02, #2ECC71)' }}
+          >
+            {saving ? '⏳ Creant...' : '➕ Crear perfil'}
+          </button>
+        </div>
+      </SectionCard>
     </div>
   )
 }
