@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 
@@ -91,24 +91,51 @@ export default function AvatarUpload({
     setShowMenu(false)
     setError('')
 
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('La càmera no és compatible (cal HTTPS)')
+      return
+    }
+
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user' },
+        audio: false,
       })
       setStream(mediaStream)
       setShowCamera(true)
-
-      // Attach stream to video element once the modal renders
-      requestAnimationFrame(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream
-        }
-      })
     } catch (err) {
-      console.error(err)
-      setError("No s'ha pogut accedir a la càmera")
+      console.error('[camera] getUserMedia failed:', err)
+      const name = (err as { name?: string })?.name
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setError('Permís de càmera denegat')
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setError('No s\'ha trobat cap càmera')
+      } else {
+        setError("No s'ha pogut accedir a la càmera")
+      }
     }
   }
+
+  // Attach the stream to the video element whenever both are ready.
+  // Using useEffect (not requestAnimationFrame) so it runs after React
+  // commits the modal and the ref is guaranteed to be set.
+  useEffect(() => {
+    if (!showCamera || !stream) return
+    const video = videoRef.current
+    if (!video) return
+    video.srcObject = stream
+    video.play().catch((err) => {
+      console.error('[camera] video.play() failed:', err)
+    })
+  }, [showCamera, stream])
+
+  // Stop tracks when the stream is replaced or component unmounts.
+  useEffect(() => {
+    if (!stream) return
+    return () => {
+      stream.getTracks().forEach((t) => t.stop())
+    }
+  }, [stream])
 
   function stopCamera() {
     if (stream) {
