@@ -59,7 +59,13 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
   const { points: profilePointsMap } = useProfileRoutinePoints(effectiveTargetId)
 
   const [selectedRoutine, setSelectedRoutine] = useState<Routine | null>(null)
-  const [celebration, setCelebration] = useState<{ visible: boolean; message: string; sub: string; epic?: boolean }>({
+  const [celebration, setCelebration] = useState<{
+    visible: boolean
+    message: string
+    sub: string
+    tier?: 'epic' | 'legendary'
+    levelUp?: number
+  }>({
     visible: false, message: '', sub: '',
   })
   const [newAnimals, setNewAnimals] = useState<FantasticAnimal[]>([])
@@ -174,7 +180,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
         ])
       }
 
-      await Promise.all([
+      const [, levelInfo] = await Promise.all([
         supabase.from('routine_logs').insert({ profile_id: targetId, routine_id: routine.id, score, points_awarded: points, logged_by: session.profileId }),
         updateProfilePoints(targetId, points),
         updateWalletEuros(targetId, points / pointsPerEuro),
@@ -183,10 +189,21 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
       if (score === 'good') {
         const [newBadges, unlocked] = await Promise.all([checkAndAwardBadges(targetId), checkAndUnlockAnimals(targetId)])
         if (unlocked.length > 0) { setNewAnimals(unlocked); setAnimalIdx(0) }
-        setCelebration((prev) => ({
-          ...prev,
-          sub: `+${points} punts!${newBadges.length > 0 ? ' 🏅 Nova insígnia!' : ''}${unlocked.length > 0 ? ' 🐉 Animal nou!' : ''}`,
-        }))
+        const name = allProfiles.find((p) => p.id === targetId)?.name || 'Nena'
+        if (levelInfo.leveledUp) {
+          setCelebration({
+            visible: true,
+            tier: 'epic',
+            levelUp: levelInfo.newLevel,
+            message: `🌟 NIVELL ${levelInfo.newLevel}!`,
+            sub: `${name}, has pujat de nivell! +${points} punts${newBadges.length > 0 ? ' 🏅' : ''}${unlocked.length > 0 ? ' 🐉' : ''}`,
+          })
+        } else {
+          setCelebration((prev) => ({
+            ...prev,
+            sub: `+${points} punts!${newBadges.length > 0 ? ' 🏅 Nova insígnia!' : ''}${unlocked.length > 0 ? ' 🐉 Animal nou!' : ''}`,
+          }))
+        }
       }
 
       // MEDAL WARNING / REVOCATION
@@ -276,7 +293,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
         return { profile_id: targetId, routine_id: r.id, score, points_awarded: points, logged_by: session.profileId }
       })
 
-      await Promise.all([
+      const [, levelInfo] = await Promise.all([
         supabase.from('routine_logs').insert(logsToInsert),
         updateProfilePoints(targetId, totalPoints),
         updateWalletEuros(targetId, totalPoints / pointsPerEuro),
@@ -285,10 +302,21 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
       if (score === 'good') {
         const [newBadges, unlocked] = await Promise.all([checkAndAwardBadges(targetId), checkAndUnlockAnimals(targetId)])
         if (unlocked.length > 0) { setNewAnimals(unlocked); setAnimalIdx(0) }
-        setCelebration((prev) => ({
-          ...prev,
-          sub: `${count} rutines! +${totalPoints} punts!${newBadges.length > 0 ? ' 🏅' : ''}${unlocked.length > 0 ? ' 🐉' : ''}`,
-        }))
+        const name = allProfiles.find((p) => p.id === targetId)?.name || 'Nena'
+        if (levelInfo.leveledUp) {
+          setCelebration({
+            visible: true,
+            tier: 'epic',
+            levelUp: levelInfo.newLevel,
+            message: `🌟 NIVELL ${levelInfo.newLevel}!`,
+            sub: `${name}, has pujat de nivell! ${count} rutines, +${totalPoints} punts${newBadges.length > 0 ? ' 🏅' : ''}${unlocked.length > 0 ? ' 🐉' : ''}`,
+          })
+        } else {
+          setCelebration((prev) => ({
+            ...prev,
+            sub: `${count} rutines! +${totalPoints} punts!${newBadges.length > 0 ? ' 🏅' : ''}${unlocked.length > 0 ? ' 🐉' : ''}`,
+          }))
+        }
       }
     })()
   }
@@ -315,7 +343,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
 
     setCelebration({
       visible: true,
-      epic: true,
+      tier: 'epic',
       message: `🏆 SUPER RUTINA!`,
       sub: `+${points} punts! Ets una CAMPIONA!`,
     })
@@ -335,14 +363,22 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
           supabase.from('routine_logs').delete().eq('id', existing.id),
         ])
       }
-      await Promise.all([
+      const [, levelInfo] = await Promise.all([
         supabase.from('routine_logs').insert({ profile_id: targetId, routine_id: superRoutine.id, score: 'good', points_awarded: points, logged_by: session.profileId }),
         updateProfilePoints(targetId, points),
         updateWalletEuros(targetId, points / pointsPerEuro),
       ])
       const [newBadges, unlocked] = await Promise.all([checkAndAwardBadges(targetId), checkAndUnlockAnimals(targetId)])
       if (unlocked.length > 0) { setNewAnimals(unlocked); setAnimalIdx(0) }
-      if (newBadges.length > 0 || unlocked.length > 0) {
+      if (levelInfo.leveledUp) {
+        setCelebration({
+          visible: true,
+          tier: 'legendary',
+          levelUp: levelInfo.newLevel,
+          message: `👑 LLEGENDARI!`,
+          sub: `SUPER RUTINA + NIVELL ${levelInfo.newLevel}! +${points} punts${newBadges.length > 0 ? ' 🏅' : ''}${unlocked.length > 0 ? ' 🐉' : ''}`,
+        })
+      } else if (newBadges.length > 0 || unlocked.length > 0) {
         setCelebration((prev) => ({
           ...prev,
           sub: `+${points} punts!${newBadges.length > 0 ? ' 🏅 Nova insígnia!' : ''}${unlocked.length > 0 ? ' 🐉 Animal nou!' : ''}`,
@@ -489,7 +525,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
             onAntiTrigger={handleAntiTrigger}
           />
         )}
-        <CelebrationOverlay visible={celebration.visible} message={celebration.message} subMessage={celebration.sub} epic={celebration.epic} onComplete={() => setCelebration((p) => ({ ...p, visible: false, epic: false }))} />
+        <CelebrationOverlay visible={celebration.visible} message={celebration.message} subMessage={celebration.sub} tier={celebration.tier} levelUp={celebration.levelUp} onComplete={() => setCelebration((p) => ({ ...p, visible: false, tier: undefined, levelUp: undefined }))} />
         <AnimalUnlockOverlay animals={newAnimals} idx={animalIdx} onNext={() => { if (animalIdx < newAnimals.length - 1) setAnimalIdx(animalIdx + 1); else setNewAnimals([]) }} />
       </div>
     )
@@ -565,7 +601,7 @@ export default function DashboardPage({ params }: { params: Promise<{ profileId:
           onAntiTrigger={handleAntiTrigger}
         />
       )}
-      <CelebrationOverlay visible={celebration.visible} message={celebration.message} subMessage={celebration.sub} epic={celebration.epic} onComplete={() => setCelebration((p) => ({ ...p, visible: false, epic: false }))} />
+      <CelebrationOverlay visible={celebration.visible} message={celebration.message} subMessage={celebration.sub} tier={celebration.tier} levelUp={celebration.levelUp} onComplete={() => setCelebration((p) => ({ ...p, visible: false, tier: undefined, levelUp: undefined }))} />
       <AnimalUnlockOverlay animals={newAnimals} idx={animalIdx} onNext={() => { if (animalIdx < newAnimals.length - 1) setAnimalIdx(animalIdx + 1); else setNewAnimals([]) }} />
     </div>
   )
