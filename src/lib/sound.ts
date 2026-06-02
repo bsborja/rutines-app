@@ -126,6 +126,36 @@ export function playLevelUpSound(): void {
   }
 }
 
+// Legendary fanfare for super routine + level up combo
+export function playLegendarySound(): void {
+  try {
+    const ctx = getAudioContext()
+    const now = ctx.currentTime
+
+    // Triumphant ascending fanfare
+    const fanfare = [
+      { freq: 523.25,  time: 0,    dur: 0.18 },
+      { freq: 659.25,  time: 0.18, dur: 0.18 },
+      { freq: 783.99,  time: 0.36, dur: 0.18 },
+      { freq: 1046.5,  time: 0.54, dur: 0.32 },
+      { freq: 1318.51, time: 0.86, dur: 0.32 },
+      { freq: 1568,    time: 1.18, dur: 0.42 },
+      { freq: 2093,    time: 1.55, dur: 0.7  },
+    ]
+    fanfare.forEach(({ freq, time, dur }) => playNote(freq, dur, now + time, 0.32))
+
+    // Layered sustained harmony underneath
+    const harmony = [261.63, 329.63, 392, 523.25, 659.25]
+    harmony.forEach((freq, i) => playNote(freq, 1.6, now + 0.45 + i * 0.07, 0.13))
+
+    // Bell sparkle on top at the climax
+    const sparkle = [2349, 2637, 3136, 3520]
+    sparkle.forEach((freq, i) => playNote(freq, 0.4, now + 1.7 + i * 0.1, 0.14, 'triangle'))
+  } catch {
+    // silent fallback
+  }
+}
+
 // Badge earned sound
 export function playBadgeSound(): void {
   try {

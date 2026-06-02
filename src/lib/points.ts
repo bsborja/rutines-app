@@ -260,23 +260,30 @@ export async function checkAndAwardBadges(profileId: string): Promise<string[]> 
   return newBadges
 }
 
-// Update profile total points and level
-export async function updateProfilePoints(profileId: string, pointsDelta: number): Promise<void> {
+// Update profile total points and level. Returns level transition info
+// so callers can react to level-ups (e.g. trigger a special celebration).
+export async function updateProfilePoints(
+  profileId: string,
+  pointsDelta: number,
+): Promise<{ leveledUp: boolean; oldLevel: number; newLevel: number; newTotal: number }> {
   const { data: profile } = await supabase
     .from('profiles')
-    .select('total_points')
+    .select('total_points, level')
     .eq('id', profileId)
     .single()
 
-  if (!profile) return
+  if (!profile) return { leveledUp: false, oldLevel: 0, newLevel: 0, newTotal: 0 }
 
   const newTotal = Math.max(0, profile.total_points + pointsDelta)
   const newLevel = getLevelFromPoints(newTotal)
+  const oldLevel = profile.level
 
   await supabase
     .from('profiles')
     .update({ total_points: newTotal, level: newLevel })
     .eq('id', profileId)
+
+  return { leveledUp: newLevel > oldLevel, oldLevel, newLevel, newTotal }
 }
 
 // Check and unlock fantastic animals based on current level
