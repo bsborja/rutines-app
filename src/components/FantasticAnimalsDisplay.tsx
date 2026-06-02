@@ -10,13 +10,13 @@ const ALL_ANIMALS: Omit<FantasticAnimal, 'id'>[] = [
   { level_required: 2,  name: 'Drac de Foc',          emoji: '🐉', description: 'Petit però ferotge, primer company de viatge' },
   { level_required: 4,  name: 'Sirena Lluminosa',      emoji: '🧜', description: 'Brillant com la lluna, viu entre les ones' },
   { level_required: 6,  name: 'Fènix',                 emoji: '🔥', description: 'Reneix de les cendres, més fort cada vegada' },
-  { level_required: 8,  name: 'Unicorn Daurat',        emoji: '🦄', description: 'Màgic i pur, galopa entre els arcs de Sant Martí' },
-  { level_required: 10, name: 'Salamandra Voladora',   emoji: '🦎', description: 'Vola entre les flames sense cremar-se mai' },
-  { level_required: 12, name: 'Grifó',                 emoji: '🦅', description: 'Meitat àguila meitat lleó, guardià dels tresors' },
-  { level_required: 14, name: 'Kitsune',               emoji: '🦊', description: 'Guineu màgica de 9 cues, antiga i sàvia' },
-  { level_required: 16, name: 'Pegàs',                 emoji: '🐴', description: 'Cavall alat dels déus, vola fins als núvols' },
-  { level_required: 18, name: 'Gat de les Estrelles',  emoji: '🐱', description: 'Guardià del cel nocturn, salta entre constel·lacions' },
-  { level_required: 20, name: 'Lleó dels Núvols',      emoji: '🦁', description: 'El més poderós de tots, regna als cims del món' },
+  { level_required: 7,  name: 'Unicorn Daurat',        emoji: '🦄', description: 'Màgic i pur, galopa entre els arcs de Sant Martí' },
+  { level_required: 8,  name: 'Salamandra Voladora',   emoji: '🦎', description: 'Vola entre les flames sense cremar-se mai' },
+  { level_required: 9,  name: 'Grifó',                 emoji: '🦅', description: 'Meitat àguila meitat lleó, guardià dels tresors' },
+  { level_required: 10, name: 'Kitsune',               emoji: '🦊', description: 'Guineu màgica de 9 cues, antiga i sàvia' },
+  { level_required: 11, name: 'Pegàs',                 emoji: '🐴', description: 'Cavall alat dels déus, vola fins als núvols' },
+  { level_required: 12, name: 'Gat de les Estrelles',  emoji: '🐱', description: 'Guardià del cel nocturn, salta entre constel·lacions' },
+  { level_required: 13, name: 'Lleó dels Núvols',      emoji: '🦁', description: 'El més poderós de tots, regna als cims del món' },
 ]
 
 interface FantasticAnimalsDisplayProps {

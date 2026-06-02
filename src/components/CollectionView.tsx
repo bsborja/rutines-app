@@ -26,13 +26,13 @@ const ALL_ANIMALS: Omit<FantasticAnimal, 'id'>[] = [
   { level_required: 2,  name: 'Drac de Foc',          emoji: '🐉', description: 'Petit però ferotge, primer company de viatge' },
   { level_required: 4,  name: 'Sirena Lluminosa',      emoji: '🧜', description: 'Brillant com la lluna, viu entre les ones' },
   { level_required: 6,  name: 'Fènix',                 emoji: '🔥', description: 'Reneix de les cendres, més fort cada vegada' },
-  { level_required: 8,  name: 'Unicorn Daurat',        emoji: '🦄', description: 'Màgic i pur, galopa entre els arcs de Sant Martí' },
-  { level_required: 10, name: 'Salamandra Voladora',   emoji: '🦎', description: 'Vola entre les flames sense cremar-se mai' },
-  { level_required: 12, name: 'Grifó',                 emoji: '🦅', description: 'Meitat àguila meitat lleó, guardià dels tresors' },
-  { level_required: 14, name: 'Kitsune',               emoji: '🦊', description: 'Guineu màgica de 9 cues, antiga i sàvia' },
-  { level_required: 16, name: 'Pegàs',                 emoji: '🐴', description: 'Cavall alat dels déus, vola fins als núvols' },
-  { level_required: 18, name: 'Gat de les Estrelles',  emoji: '🐱', description: 'Guardià del cel nocturn, salta entre constel·lacions' },
-  { level_required: 20, name: 'Lleó dels Núvols',      emoji: '🦁', description: 'El més poderós de tots, regna als cims del món' },
+  { level_required: 7,  name: 'Unicorn Daurat',        emoji: '🦄', description: 'Màgic i pur, galopa entre els arcs de Sant Martí' },
+  { level_required: 8,  name: 'Salamandra Voladora',   emoji: '🦎', description: 'Vola entre les flames sense cremar-se mai' },
+  { level_required: 9,  name: 'Grifó',                 emoji: '🦅', description: 'Meitat àguila meitat lleó, guardià dels tresors' },
+  { level_required: 10, name: 'Kitsune',               emoji: '🦊', description: 'Guineu màgica de 9 cues, antiga i sàvia' },
+  { level_required: 11, name: 'Pegàs',                 emoji: '🐴', description: 'Cavall alat dels déus, vola fins als núvols' },
+  { level_required: 12, name: 'Gat de les Estrelles',  emoji: '🐱', description: 'Guardià del cel nocturn, salta entre constel·lacions' },
+  { level_required: 13, name: 'Lleó dels Núvols',      emoji: '🦁', description: 'El més poderós de tots, regna als cims del món' },
 ]
 
 // Mystery hints shown in the locked modal — one per level tier
@@ -40,13 +40,13 @@ const MYSTERY_HINTS: Record<number, string> = {
   2:  'Un petit guardià amb escates brillants i alè ardent... el primer pas del teu viatge!',
   4:  'Es diu que viu sota la lluna, amb cua lluent que encanta les aigües...',
   6:  'Renaixerà de les cendres quan menys t\'ho esperis. Fes-te fort i el trobaràs!',
-  8:  'Un animal pur amb banya màgica. Només els constants el coneixen...',
-  10: 'Vola entre flames sense cremar-se. Quin poder! Quin color tindrà?',
-  12: 'Mig àguila, mig lleó. Guarda tresors antics. Només els valents el desperten!',
-  14: 'Sàvia i antiga, amb moltes cues. Qui serà? Un misteri oriental t\'espera!',
-  16: 'Ales blanques entre núvols... els déus diuen que només els dignes el munten!',
-  18: 'Un guardià del cel nocturn, entre constel·lacions. Esperant-te entre estrelles...',
-  20: 'El més poderós i esquiu. Només els veritables mestres el coneixen. Hi arribaràs?',
+  7:  'Un animal pur amb banya màgica. Només els constants el coneixen...',
+  8:  'Vola entre flames sense cremar-se. Quin poder! Quin color tindrà?',
+  9:  'Mig àguila, mig lleó. Guarda tresors antics. Només els valents el desperten!',
+  10: 'Sàvia i antiga, amb moltes cues. Qui serà? Un misteri oriental t\'espera!',
+  11: 'Ales blanques entre núvols... els déus diuen que només els dignes el munten!',
+  12: 'Un guardià del cel nocturn, entre constel·lacions. Esperant-te entre estrelles...',
+  13: 'El més poderós i esquiu. Només els veritables mestres el coneixen. Hi arribaràs?',
 }
 
 // ---------------------------------------------------------------------------

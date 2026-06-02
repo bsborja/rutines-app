@@ -54,13 +54,13 @@ INSERT INTO fantastic_animals (level_required, name, emoji, description) VALUES
 (2,  'Drac de Foc',          '🐉',    'Petit però ferotge, primer company de viatge'),
 (4,  'Sirena Lluminosa',     '🧜',    'Brillant com la lluna, viu entre les ones'),
 (6,  'Fènix',                '🔥',    'Reneix de les cendres, més fort cada vegada'),
-(8,  'Unicorn Daurat',       '🦄',    'Màgic i pur, galopa entre els arcs de Sant Martí'),
-(10, 'Salamandra Voladora',  '🦎',    'Vola entre les flames sense cremar-se mai'),
-(12, 'Grifó',                '🦅',    'Meitat àguila meitat lleó, guardià dels tresors'),
-(14, 'Kitsune',              '🦊',    'Guineu màgica de 9 cues, antiga i sàvia'),
-(16, 'Pegàs',                '🐴',    'Cavall alat dels déus, vola fins als núvols'),
-(18, 'Gat de les Estrelles', '🐱',    'Guardià del cel nocturn, salta entre constel·lacions'),
-(20, 'Lleó dels Núvols',     '🦁',    'El més poderós de tots, regna als cims del món')
+(7,  'Unicorn Daurat',       '🦄',    'Màgic i pur, galopa entre els arcs de Sant Martí'),
+(8,  'Salamandra Voladora',  '🦎',    'Vola entre les flames sense cremar-se mai'),
+(9,  'Grifó',                '🦅',    'Meitat àguila meitat lleó, guardià dels tresors'),
+(10, 'Kitsune',              '🦊',    'Guineu màgica de 9 cues, antiga i sàvia'),
+(11, 'Pegàs',                '🐴',    'Cavall alat dels déus, vola fins als núvols'),
+(12, 'Gat de les Estrelles', '🐱',    'Guardià del cel nocturn, salta entre constel·lacions'),
+(13, 'Lleó dels Núvols',     '🦁',    'El més poderós de tots, regna als cims del món')
 ON CONFLICT (level_required) DO NOTHING;
 
 -- ============================================================
